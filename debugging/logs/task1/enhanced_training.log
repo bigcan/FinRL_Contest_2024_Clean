@@ -1,0 +1,59 @@
+Loading enhanced features from ./data/raw/task1/BTC_1sec_predict_enhanced.npy
+Enhanced features loaded: 16 features
+State dimension: 16 (factor_dim: 14 + 2 position features)
+Loading enhanced features from ./data/raw/task1/BTC_1sec_predict_enhanced.npy
+Enhanced features loaded: 16 features
+State dimension: 16 (factor_dim: 14 + 2 position features)
+Using state_dim: 16
+Loading enhanced features from ./data/raw/task1/BTC_1sec_predict_enhanced.npy
+Enhanced features loaded: 16 features
+State dimension: 16 (factor_dim: 14 + 2 position features)
+| Arguments Remove cwd: ./TradeSimulator-v0_D3QN_-1
+Loading enhanced features from ./data/raw/task1/BTC_1sec_predict_enhanced.npy
+Enhanced features loaded: 16 features
+State dimension: 16 (factor_dim: 14 + 2 position features)
+Loading original features from ./data/raw/task1/BTC_1sec_predict.npy
+State dimension: 8 (factor_dim: 6 + 2 position features)
+| Evaluator:
+| `step`: Number of samples, or total training steps, or running times of `env.step()`.
+| `time`: Time spent from the start of training to this moment.
+| `avgR`: Average value of cumulative rewards, which is the sum of rewards in an episode.
+| `stdR`: Standard dev of cumulative rewards, which is the sum of rewards in an episode.
+| `avgS`: Average of steps in an episode.
+| `objC`: Objective of Critic network. Or call it loss function of critic network.
+| `objA`: Objective of Actor network. It is the average Q value of the critic network.
+################################################################################
+ID     Step    Time |    avgR   stdR   avgS  stdS |    expR   objC   objA   etc.
+;;;                                                                        [238 506 256] [273 438 288]
+Traceback (most recent call last):
+  File "/mnt/c/QuantConnect/FinRL_Contest_2024/FinRL_Contest_2024/task1_ensemble.py", line 295, in <module>
+    run(
+  File "/mnt/c/QuantConnect/FinRL_Contest_2024/FinRL_Contest_2024/task1_ensemble.py", line 290, in run
+    ensemble_env.ensemble_train()
+  File "/mnt/c/QuantConnect/FinRL_Contest_2024/FinRL_Contest_2024/task1_ensemble.py", line 109, in ensemble_train
+    agent = self.train_agent(args=args)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/c/QuantConnect/FinRL_Contest_2024/FinRL_Contest_2024/task1_ensemble.py", line 214, in train_agent
+    evaluator.evaluate_and_save(
+  File "/mnt/c/QuantConnect/FinRL_Contest_2024/FinRL_Contest_2024/erl_evaluator.py", line 52, in evaluate_and_save
+    rewards_step_ten = self.get_cumulative_rewards_and_step(actor)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/c/QuantConnect/FinRL_Contest_2024/FinRL_Contest_2024/erl_evaluator.py", line 104, in get_cumulative_rewards_and_step
+    rewards_step_list = [get_cumulative_rewards_and_step_from_vec_env(self.env, actor)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/c/QuantConnect/FinRL_Contest_2024/FinRL_Contest_2024/erl_evaluator.py", line 181, in get_cumulative_rewards_and_step_from_vec_env
+    action = actor(state.to(device))
+             ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/bigcan/.local/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1751, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/bigcan/.local/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1762, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/c/QuantConnect/FinRL_Contest_2024/FinRL_Contest_2024/erl_net.py", line 82, in forward
+    state = self.state_norm(state)
+            ^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/c/QuantConnect/FinRL_Contest_2024/FinRL_Contest_2024/erl_net.py", line 21, in state_norm
+    return (state - self.state_avg) / self.state_std
+            ~~~~~~^~~~~~~~~~~~~~~~
+RuntimeError: The size of tensor a (10) must match the size of tensor b (16) at non-singleton dimension 1

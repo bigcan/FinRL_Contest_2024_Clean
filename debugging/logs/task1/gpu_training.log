@@ -1,0 +1,105 @@
+============================================================
+TRAINING ENHANCED FEATURES ON GPU
+============================================================
+✅ Using GPU 0: NVIDIA GeForce RTX 4060 Laptop GPU
+✅ GPU Memory: 8.6GB
+✅ Enhanced features loaded: (823682, 16)
+✅ State dimension will be: 16
+⚠️  Found existing directory: TradeSimulator-v0_D3QN_0
+   (Models may have old dimensions - training will create new ones)
+⚠️  Found existing directory: TradeSimulator-v0_D3QN_-1
+   (Models may have old dimensions - training will create new ones)
+⚠️  Found existing directory: ensemble_teamname
+   (Models may have old dimensions - training will create new ones)
+
+🚀 Starting training...
+   Save path: ensemble_enhanced_gpu_0
+   GPU ID: 0
+   Agents: ['AgentD3QN', 'AgentDoubleDQN', 'AgentTwinD3QN']
+   Enhanced features: 16 dimensions
+Loading enhanced features from ./data/raw/task1/BTC_1sec_predict_enhanced.npy
+Enhanced features loaded: 16 features
+State dimension: 16 (factor_dim: 14 + 2 position features)
+Loading enhanced features from ./data/raw/task1/BTC_1sec_predict_enhanced.npy
+Enhanced features loaded: 16 features
+State dimension: 16 (factor_dim: 14 + 2 position features)
+Using state_dim: 16
+Loading enhanced features from ./data/raw/task1/BTC_1sec_predict_enhanced.npy
+Enhanced features loaded: 16 features
+State dimension: 16 (factor_dim: 14 + 2 position features)
+| Arguments Remove cwd: ./TradeSimulator-v0_D3QN_0
+Loading enhanced features from ./data/raw/task1/BTC_1sec_predict_enhanced.npy
+Enhanced features loaded: 16 features
+State dimension: 16 (factor_dim: 14 + 2 position features)
+Loading enhanced features from ./data/raw/task1/BTC_1sec_predict_enhanced.npy
+Enhanced features loaded: 16 features
+State dimension: 16 (factor_dim: 14 + 2 position features)
+| Evaluator:
+| `step`: Number of samples, or total training steps, or running times of `env.step()`.
+| `time`: Time spent from the start of training to this moment.
+| `avgR`: Average value of cumulative rewards, which is the sum of rewards in an episode.
+| `stdR`: Standard dev of cumulative rewards, which is the sum of rewards in an episode.
+| `avgS`: Average of steps in an episode.
+| `objC`: Objective of Critic network. Or call it loss function of critic network.
+| `objA`: Objective of Actor network. It is the average Q value of the critic network.
+################################################################################
+ID     Step    Time |    avgR   stdR   avgS  stdS |    expR   objC   objA   etc.
+;;;                                                                        [360  96 544] [299 251 450]
+;;;;;;                                                                                                                [ 21 957  21] [ 44 852 103]
+;;;;;;                                                                                                                [ 22 955  22] [ 17 916  67]
+;;;;;;                                                                                                                [ 29 942  29] [113 822  65]
+0  4.74e+03      91 |  155.32   71.3   2370     0 |    0.18   3.71   0.06
+| UsedTime:      92 | SavedDir: ./TradeSimulator-v0_D3QN_0
+| Arguments Remove cwd: ./TradeSimulator-v0_D3QN_0
+Loading enhanced features from ./data/raw/task1/BTC_1sec_predict_enhanced.npy
+Enhanced features loaded: 16 features
+State dimension: 16 (factor_dim: 14 + 2 position features)
+Loading enhanced features from ./data/raw/task1/BTC_1sec_predict_enhanced.npy
+Enhanced features loaded: 16 features
+State dimension: 16 (factor_dim: 14 + 2 position features)
+| Evaluator:
+| `step`: Number of samples, or total training steps, or running times of `env.step()`.
+| `time`: Time spent from the start of training to this moment.
+| `avgR`: Average value of cumulative rewards, which is the sum of rewards in an episode.
+| `stdR`: Standard dev of cumulative rewards, which is the sum of rewards in an episode.
+| `avgS`: Average of steps in an episode.
+| `objC`: Objective of Critic network. Or call it loss function of critic network.
+| `objA`: Objective of Actor network. It is the average Q value of the critic network.
+################################################################################
+ID     Step    Time |    avgR   stdR   avgS  stdS |    expR   objC   objA   etc.
+;;;                                                                        [ 86  45 869] [ 43 215 742]
+;;;;;;                                                                                                                [ 60 880  60] [ 12 561 426]
+;;;;;;                                                                                                                [ 39 922  39] [  8 810 182]
+;;;;;;                                                                                                                [122 755 122] [  5 420 574]
+0  4.74e+03      73 |  300.64  181.3   2370     0 |    0.20   3.78   0.11
+| UsedTime:      73 | SavedDir: ./TradeSimulator-v0_D3QN_0
+| Arguments Remove cwd: ./TradeSimulator-v0_D3QN_0
+Loading enhanced features from ./data/raw/task1/BTC_1sec_predict_enhanced.npy
+Enhanced features loaded: 16 features
+State dimension: 16 (factor_dim: 14 + 2 position features)
+Loading enhanced features from ./data/raw/task1/BTC_1sec_predict_enhanced.npy
+Enhanced features loaded: 16 features
+State dimension: 16 (factor_dim: 14 + 2 position features)
+| Evaluator:
+| `step`: Number of samples, or total training steps, or running times of `env.step()`.
+| `time`: Time spent from the start of training to this moment.
+| `avgR`: Average value of cumulative rewards, which is the sum of rewards in an episode.
+| `stdR`: Standard dev of cumulative rewards, which is the sum of rewards in an episode.
+| `avgS`: Average of steps in an episode.
+| `objC`: Objective of Critic network. Or call it loss function of critic network.
+| `objA`: Objective of Actor network. It is the average Q value of the critic network.
+################################################################################
+ID     Step    Time |    avgR   stdR   avgS  stdS |    expR   objC   objA   etc.
+;;;                                                                        [ 86  45 869] [ 43 215 742]
+;;;;;;                                                                                                                [ 60 880  60] [ 12 561 426]
+;;;;;;                                                                                                                [ 39 922  39] [  8 810 182]
+;;;;;;                                                                                                                [122 755 122] [  5 420 574]
+0  4.74e+03      64 |  300.64  181.3   2370     0 |    0.20   3.78   0.11
+| UsedTime:      65 | SavedDir: ./TradeSimulator-v0_D3QN_0
+Ensemble models saved in directory: ensemble_enhanced_gpu_0/ensemble_models
+
+============================================================
+✅ TRAINING COMPLETED SUCCESSFULLY
+============================================================
+Models saved to: ensemble_enhanced_gpu_0
+Enhanced features training with GPU acceleration complete!
