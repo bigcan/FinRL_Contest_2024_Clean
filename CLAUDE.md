@@ -111,3 +111,79 @@ Both tasks require:
 - README explaining methodology and changes
 - requirements.txt for any additional dependencies
 - Working evaluation scripts that match expected outputs
+
+### Feature Engineering Strategy
+
+Our strategy is to create a robust feature set by focusing on three key areas, in order of priority: market microstructure, data transformation, and external data sources.
+
+#### 1. Market Microstructure (Highest Priority)
+
+These features capture immediate supply and demand from the Limit Order Book (LOB) and are critical for short-term prediction.
+
+*   **Core LOB Indicators (Implement First):**
+    *   **Bid-Ask Spread:** Measures market liquidity.
+    *   **Order Book Depth:** Shows the volume of buy/sell orders at different price levels.
+    *   **Volume Weighted Average Price (VWAP):** Provides the average price weighted by volume.
+*   **Order Flow & Imbalance (Key Predictive Signals):**
+    *   **Order Flow Imbalance (OFI):** Captures the net direction of order flow.
+    *   **Normalized Order Book Imbalance (NOBI):** Measures the imbalance between bid and ask volume.
+    *   **Trade Flow Imbalance (TFI):** Tracks the imbalance between buy and sell trades.
+*   **Advanced Microstructure (Future Work):**
+    *   **Microprice:** A more accurate valuation than the mid-price.
+    *   **Order Arrival & Cancellation Rates:** Indicates market participant intentions.
+
+#### 2. Data Transformation (Essential for Model Stability)
+
+Raw data is often non-stationary. These transformations create statistically robust features that improve model performance.
+
+*   **Stationarity:**
+    *   **Standard Method:** Use log returns (`log(price_t) - log(price_{t-1})`) to stabilize the time series. This will be our primary approach.
+    *   **Advanced Method (Future Research):** Explore Fractional Differentiation to achieve stationarity while preserving data memory.
+*   **Normalization:**
+    *   Apply `StandardScaler` to the final feature set to standardize the input for the neural network.
+
+#### 3. External & Alternative Data (For a Broader Market View)
+
+Integrating external data can provide context that is not available in the LOB data alone.
+
+*   **On-Chain Analysis (Future Work):**
+    *   Transaction Volume & Active Addresses
+    *   Exchange Inflows/Outflows
+*   **Social Sentiment Analysis (Future Work):**
+    *   Sentiment Scores (Twitter, Reddit)
+    *   Fear & Greed Index
+
+#### Other High-Impact Techniques to Consider
+
+*   **Volatility Features:** Use Historical Volatility or ATR as features to help the model identify market regimes.
+*   **Time-Based Features:** Encode time of day/week using sinusoidal transformations to capture cyclical patterns.
+*   **Market Regime Identification:** Use indicators like ADX to classify the market as trending or ranging.
+
+### Real-Time Feature Engineering Considerations (For Live Deployment)
+
+This section outlines the critical challenges and solutions for implementing feature engineering in a live, real-time trading environment.
+
+1.  **Adopt a Streaming Architecture:**
+    *   **Challenge:** Batch processing is too slow for live trading.
+    *   **Solution:** Use a streaming architecture with a message queue (e.g., Kafka, Redis) to ingest WebSocket data feeds. Process this data using a stream processing framework (e.g., Flink, Spark Streaming) that can maintain the state required for stateful features.
+
+2.  **Implement Incremental Calculations:**
+    *   **Challenge:** Re-calculating features from scratch on each tick is computationally expensive.
+    *   **Solution:** Use incremental update algorithms. EMAs are naturally incremental. For SMAs and rolling standard deviations, use efficient algorithms that add the new value and subtract the oldest value from the rolling window.
+
+3.  **Handle Standardization with a "Frozen" Scaler:**
+    *   **Challenge:** `StandardScaler` is a batch tool and cannot be fit on a live, growing dataset.
+    *   **Solution:** Pre-train the scaler on a large, representative historical dataset to get a "frozen" mean and standard deviation. Use these frozen values to scale new data points in real-time. Periodically retrain the scaler (e.g., daily or weekly) to adapt to concept drift.
+
+4.  **Optimize Computational Resources:**
+    *   **Challenge:** Latency is critical.
+    *   **Solution:** Use high-performance libraries (NumPy, Pandas), pre-compute expensive features less frequently, and use optimized hardware. For ultra-low latency, consider dedicated hardware like FPGAs.
+
+5.  **Separate Concerns with a Modular Pipeline:**
+    *   **Challenge:** A monolithic system is hard to scale and debug.
+    *   **Solution:** Build a modular pipeline with separate services for: 
+        *   **Data Ingestion:** Connects to the exchange.
+        *   **Feature Calculation:** Consumes data and computes features.
+        *   **RL Agent:** Makes decisions based on features.
+        *   **Execution:** Sends orders to the exchange.
+    *   This allows for independent scaling and improved reliability.

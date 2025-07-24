@@ -14,6 +14,7 @@ import os
 from .technical_indicators import TechnicalIndicators
 from .lob_features import LOBFeatures
 from .feature_selector import FeatureSelector
+from .data_transformer import DataTransformer
 
 class FeatureProcessor:
     """Main feature processing pipeline"""
@@ -32,6 +33,7 @@ class FeatureProcessor:
         # Initialize components
         self.tech_indicators = TechnicalIndicators()
         self.lob_features = LOBFeatures()
+        self.data_transformer = DataTransformer()
         self.feature_selector = FeatureSelector(max_features=25)
         
         # State
@@ -85,6 +87,10 @@ class FeatureProcessor:
         print("Computing LOB features...")
         lob_feat_dict = self.lob_features.compute_lob_features(lob_data)
         
+        # Compute data transformation features
+        print("Computing data transformation features...")
+        transform_feat_dict = self.data_transformer.transform_data(lob_data, apply_normalization=False)
+        
         # Combine all features
         all_features = {}
         
@@ -100,6 +106,11 @@ class FeatureProcessor:
         for name, values in lob_feat_dict.items():
             feature_names.append(f'lob_{name}')
             all_features[f'lob_{name}'] = values
+        
+        # Data transformation features
+        for name, values in transform_feat_dict.items():
+            feature_names.append(f'transform_{name}')
+            all_features[f'transform_{name}'] = values
             
         # Original features
         if original_features is not None:
@@ -259,3 +270,141 @@ class FeatureProcessor:
                 normalized[:, i] = (features[:, i] - params['mean']) / params['std']
         
         return normalized
+    
+    def validate_features(self, feature_array, feature_names, verbose=True):
+        """
+        Comprehensive feature validation
+        
+        Args:
+            feature_array: Feature array to validate
+            feature_names: List of feature names
+            verbose: Whether to print detailed validation results
+            
+        Returns:
+            Dictionary of validation results
+        """
+        validation_results = {
+            'total_features': len(feature_names),
+            'array_shape': feature_array.shape,
+            'nan_count': 0,
+            'inf_count': 0,
+            'constant_features': [],
+            'high_correlation_pairs': [],
+            'feature_stats': {}
+        }
+        
+        if verbose:
+            print("=" * 60)
+            print("FEATURE VALIDATION REPORT")
+            print("=" * 60)
+            print(f"Total features: {validation_results['total_features']}")
+            print(f"Array shape: {validation_results['array_shape']}")
+        
+        # Check for NaN and Inf values
+        nan_mask = np.isnan(feature_array)
+        inf_mask = np.isinf(feature_array)
+        
+        validation_results['nan_count'] = np.sum(nan_mask)
+        validation_results['inf_count'] = np.sum(inf_mask)
+        
+        if verbose:
+            print(f"NaN values: {validation_results['nan_count']}")
+            print(f"Inf values: {validation_results['inf_count']}")
+        
+        # Feature statistics
+        for i, name in enumerate(feature_names):
+            if i < feature_array.shape[1]:
+                col_data = feature_array[:, i]
+                stats = {
+                    'mean': np.mean(col_data),
+                    'std': np.std(col_data),
+                    'min': np.min(col_data),
+                    'max': np.max(col_data),
+                    'nan_count': np.sum(np.isnan(col_data)),
+                    'zero_count': np.sum(col_data == 0)
+                }
+                validation_results['feature_stats'][name] = stats
+                
+                # Check for constant features
+                if stats['std'] < 1e-8:
+                    validation_results['constant_features'].append(name)
+        
+        # Check for high correlations (excluding position features)
+        if feature_array.shape[1] > 2:
+            corr_matrix = np.corrcoef(feature_array[:, 2:].T)
+            high_corr_threshold = 0.95
+            
+            for i in range(len(corr_matrix)):
+                for j in range(i+1, len(corr_matrix)):
+                    if abs(corr_matrix[i, j]) > high_corr_threshold:
+                        name1 = feature_names[i+2] if i+2 < len(feature_names) else f"feature_{i+2}"
+                        name2 = feature_names[j+2] if j+2 < len(feature_names) else f"feature_{j+2}"
+                        validation_results['high_correlation_pairs'].append(
+                            (name1, name2, corr_matrix[i, j])
+                        )
+        
+        if verbose:
+            print(f"Constant features: {len(validation_results['constant_features'])}")
+            if validation_results['constant_features']:
+                for name in validation_results['constant_features'][:5]:
+                    print(f"  - {name}")
+                if len(validation_results['constant_features']) > 5:
+                    print(f"  ... and {len(validation_results['constant_features']) - 5} more")
+            
+            print(f"High correlation pairs: {len(validation_results['high_correlation_pairs'])}")
+            for name1, name2, corr in validation_results['high_correlation_pairs'][:3]:
+                print(f"  - {name1} <-> {name2}: {corr:.3f}")
+            if len(validation_results['high_correlation_pairs']) > 3:
+                print(f"  ... and {len(validation_results['high_correlation_pairs']) - 3} more")
+            
+            print("\nTop feature statistics:")
+            sorted_features = sorted(validation_results['feature_stats'].items(), 
+                                   key=lambda x: abs(x[1]['std']), reverse=True)
+            for name, stats in sorted_features[:5]:
+                print(f"  {name}: mean={stats['mean']:.3f}, std={stats['std']:.3f}")
+            
+            print("=" * 60)
+        
+        return validation_results
+    
+    def get_feature_metadata(self):
+        """Get comprehensive feature metadata"""
+        if self.feature_names is None:
+            return None
+        
+        metadata = {
+            'feature_count': len(self.feature_names),
+            'feature_names': self.feature_names,
+            'feature_categories': self._categorize_features(),
+            'normalization_params': self.normalization_params,
+            'selected_features': self.selected_features
+        }
+        
+        if hasattr(self.feature_selector, 'feature_importance') and self.feature_selector.feature_importance is not None:
+            metadata['feature_importance'] = self.feature_selector.get_feature_rankings()
+        
+        return metadata
+    
+    def _categorize_features(self):
+        """Categorize features by type"""
+        categories = {
+            'position': [],
+            'technical': [],
+            'lob': [],
+            'transform': [],
+            'original': []
+        }
+        
+        for name in self.feature_names:
+            if name.startswith('position') or name.startswith('holding'):
+                categories['position'].append(name)
+            elif name.startswith('tech_'):
+                categories['technical'].append(name)
+            elif name.startswith('lob_'):
+                categories['lob'].append(name)
+            elif name.startswith('transform_'):
+                categories['transform'].append(name)
+            elif name.startswith('original_'):
+                categories['original'].append(name)
+        
+        return categories

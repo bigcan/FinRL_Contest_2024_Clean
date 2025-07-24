@@ -110,6 +110,15 @@ class TechnicalIndicators:
             indicators['stoch_k'] = stoch_data['STOCHk_14_3_3'].fillna(50).values / 100.0
         else:
             indicators['stoch_k'] = self._fallback_stoch(mid_prices)
+        
+        # Historical Volatility (2 features)
+        indicators.update(self._compute_historical_volatility(mid_prices))
+        
+        # ATR Approximation (1 feature) 
+        indicators['atr_approximation'] = self._compute_atr_approximation(df)
+        
+        # Market Regime Indicators (2 features)
+        indicators.update(self._compute_market_regime_indicators(mid_prices))
             
         return indicators
     
@@ -124,6 +133,11 @@ class TechnicalIndicators:
         indicators.update(self._fallback_obv(mid_prices, volume_data))
         indicators['ema_crossover'] = self._fallback_ema_crossover(mid_prices)
         indicators['stoch_k'] = self._fallback_stoch(mid_prices)
+        
+        # Additional indicators
+        indicators.update(self._compute_historical_volatility(mid_prices))
+        indicators['atr_approximation'] = self._compute_atr_approximation_fallback(mid_prices)
+        indicators.update(self._compute_market_regime_indicators(mid_prices))
         
         return indicators
     
@@ -238,3 +252,162 @@ class TechnicalIndicators:
         for i in range(period-1, len(prices)):
             std[i] = np.std(prices[max(0, i-period+1):i+1])
         return std
+    
+    def _compute_historical_volatility(self, prices):
+        """
+        Compute historical volatility measures
+        
+        Args:
+            prices: Array of price values
+            
+        Returns:
+            Dictionary of volatility features
+        """
+        # Log returns for volatility calculation
+        log_returns = np.diff(np.log(prices + 1e-8))
+        log_returns = np.concatenate([[0], log_returns])
+        
+        # Short-term volatility (10 periods)
+        vol_10 = self._rolling_std(log_returns, 10)
+        
+        # Medium-term volatility (20 periods)  
+        vol_20 = self._rolling_std(log_returns, 20)
+        
+        # Normalize volatilities
+        vol_10_norm = (vol_10 - np.mean(vol_10)) / (np.std(vol_10) + 1e-8)
+        vol_20_norm = (vol_20 - np.mean(vol_20)) / (np.std(vol_20) + 1e-8)
+        
+        return {
+            'historical_vol_10': vol_10_norm,
+            'historical_vol_20': vol_20_norm
+        }
+    
+    def _compute_atr_approximation(self, df):
+        """
+        Compute ATR approximation for crypto data using pandas-ta
+        
+        Args:
+            df: DataFrame with high, low, close prices
+            
+        Returns:
+            Array of normalized ATR values
+        """
+        try:
+            import pandas_ta as ta
+            atr_data = ta.atr(df['high'], df['low'], df['close'], length=14)
+            if atr_data is not None:
+                atr_norm = atr_data.fillna(0).values
+                atr_norm = (atr_norm - np.mean(atr_norm)) / (np.std(atr_norm) + 1e-8)
+                return atr_norm
+        except:
+            pass
+        
+        # Fallback to simple ATR approximation
+        return self._compute_atr_approximation_fallback(df['close'].values)
+    
+    def _compute_atr_approximation_fallback(self, prices):
+        """
+        Fallback ATR approximation using price ranges
+        
+        Args:
+            prices: Array of price values
+            
+        Returns:
+            Array of normalized ATR approximation
+        """
+        # Use rolling high-low range as ATR proxy
+        period = 14
+        atr_values = np.zeros_like(prices)
+        
+        for i in range(period-1, len(prices)):
+            window = prices[max(0, i-period+1):i+1]
+            high_low_range = np.max(window) - np.min(window)
+            
+            # True range approximation using consecutive price differences
+            if i > 0:
+                price_change = abs(prices[i] - prices[i-1])
+                true_range = max(high_low_range, price_change)
+            else:
+                true_range = high_low_range
+                
+            atr_values[i] = true_range
+        
+        # Smooth with exponential moving average
+        atr_smoothed = self._ema(atr_values, period)
+        
+        # Normalize relative to price level
+        atr_normalized = atr_smoothed / (prices + 1e-8)
+        atr_normalized = (atr_normalized - np.mean(atr_normalized)) / (np.std(atr_normalized) + 1e-8)
+        
+        return atr_normalized
+    
+    def _compute_market_regime_indicators(self, prices):
+        """
+        Compute market regime indicators (trending vs ranging)
+        
+        Args:
+            prices: Array of price values
+            
+        Returns:
+            Dictionary of market regime features
+        """
+        # ADX approximation using directional movement
+        adx_approx = self._compute_adx_approximation(prices)
+        
+        # Trend strength indicator
+        trend_strength = self._compute_trend_strength(prices)
+        
+        return {
+            'adx_approximation': adx_approx,
+            'trend_strength': trend_strength
+        }
+    
+    def _compute_adx_approximation(self, prices, period=14):
+        """Approximate ADX using price movements"""
+        adx_values = np.zeros_like(prices)
+        
+        for i in range(1, len(prices)):
+            # Directional movement
+            up_move = prices[i] - prices[i-1] if prices[i] > prices[i-1] else 0
+            down_move = prices[i-1] - prices[i] if prices[i] < prices[i-1] else 0
+            
+            # Smooth directional movements
+            if i >= period:
+                window_up = []
+                window_down = []
+                
+                for j in range(max(0, i-period+1), i+1):
+                    if j > 0:
+                        up_j = prices[j] - prices[j-1] if prices[j] > prices[j-1] else 0
+                        down_j = prices[j-1] - prices[j] if prices[j] < prices[j-1] else 0
+                        window_up.append(up_j)
+                        window_down.append(down_j)
+                
+                avg_up = np.mean(window_up)
+                avg_down = np.mean(window_down)
+                
+                # ADX approximation
+                if avg_up + avg_down > 1e-8:
+                    dx = abs(avg_up - avg_down) / (avg_up + avg_down)
+                    adx_values[i] = dx
+        
+        # Normalize
+        adx_norm = (adx_values - np.mean(adx_values)) / (np.std(adx_values) + 1e-8)
+        return adx_norm
+    
+    def _compute_trend_strength(self, prices, period=20):
+        """Compute trend strength using linear regression slope"""
+        trend_values = np.zeros_like(prices)
+        
+        for i in range(period-1, len(prices)):
+            window = prices[max(0, i-period+1):i+1]
+            x = np.arange(len(window))
+            
+            # Linear regression slope
+            if len(window) > 1:
+                slope = np.polyfit(x, window, 1)[0]
+                trend_values[i] = slope / (np.mean(window) + 1e-8)  # Normalize by price level
+        
+        # Normalize trend strength
+        trend_norm = (trend_values - np.mean(trend_values)) / (np.std(trend_values) + 1e-8)
+        return trend_norm

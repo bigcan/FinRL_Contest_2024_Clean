@@ -76,6 +76,15 @@ class LOBFeatures:
         # Flow Toxicity (1 feature)
         features['flow_toxicity'] = self._compute_flow_toxicity(lob_data)
         
+        # Microprice (1 feature)
+        features['microprice'] = self._compute_microprice(bid_prices, ask_prices, bid_volumes, ask_volumes)
+        
+        # Price Impact Measures (3 features)
+        features.update(self._compute_price_impact_measures(lob_data))
+        
+        # Order Arrival/Cancellation Rates (4 features)
+        features.update(self._compute_order_arrival_cancellation_rates(lob_data))
+        
         # Microstructure Alpha (1 feature)  
         features['microstructure_alpha'] = self._compute_microstructure_alpha(lob_data)
         
@@ -106,14 +115,18 @@ class LOBFeatures:
         return lob_data[ask_vol_cols].values
     
     def _compute_order_flow_imbalance(self, bid_volumes, ask_volumes):
-        """Compute order flow imbalance at different levels"""
+        """Compute order flow imbalance at different levels and timeframes"""
         features = {}
         
+        # Instantaneous OFI at different levels  
         for level in range(min(3, self.levels)):
             bid_vol = bid_volumes[:, level]
             ask_vol = ask_volumes[:, level]
             imbalance = (bid_vol - ask_vol) / (bid_vol + ask_vol + 1e-8)
             features[f'order_imbalance_level_{level}'] = imbalance
+        
+        # Enhanced OFI with multiple timeframes
+        features.update(self._compute_enhanced_order_flow_imbalance(bid_volumes, ask_volumes))
             
         return features
     
@@ -327,3 +340,207 @@ class LOBFeatures:
             return np.array(results)
         else:
             return data.rolling(window, min_periods=1).apply(func, raw=False).values
+    
+    def _compute_microprice(self, bid_prices, ask_prices, bid_volumes, ask_volumes):
+        """
+        Compute microprice - volume-weighted price that's more accurate than midpoint
+        
+        Microprice = (ask_price * bid_volume + bid_price * ask_volume) / (bid_volume + ask_volume)
+        
+        Args:
+            bid_prices: Array of bid prices (n_steps, n_levels)
+            ask_prices: Array of ask prices (n_steps, n_levels)  
+            bid_volumes: Array of bid volumes (n_steps, n_levels)
+            ask_volumes: Array of ask volumes (n_steps, n_levels)
+            
+        Returns:
+            Array of microprice values
+        """
+        # Use top level (level 0) for microprice calculation
+        best_bid_price = bid_prices[:, 0]
+        best_ask_price = ask_prices[:, 0] 
+        best_bid_volume = bid_volumes[:, 0]
+        best_ask_volume = ask_volumes[:, 0]
+        
+        # Compute microprice with numerical stability
+        total_volume = best_bid_volume + best_ask_volume + 1e-8
+        microprice = (best_ask_price * best_bid_volume + best_bid_price * best_ask_volume) / total_volume
+        
+        # Normalize as deviation from midpoint
+        midpoint = (best_bid_price + best_ask_price) / 2
+        microprice_deviation = (microprice - midpoint) / (midpoint + 1e-8)
+        
+        return microprice_deviation
+    
+    def _compute_enhanced_order_flow_imbalance(self, bid_volumes, ask_volumes):
+        """
+        Compute enhanced order flow imbalance with multiple timeframes
+        
+        Args:
+            bid_volumes: Array of bid volumes (n_steps, n_levels)
+            ask_volumes: Array of ask volumes (n_steps, n_levels)
+            
+        Returns:
+            Dictionary of enhanced OFI features
+        """
+        features = {}
+        
+        # Aggregate volumes across top 3 levels for better signal
+        agg_bid_vol = np.sum(bid_volumes[:, :3], axis=1)  
+        agg_ask_vol = np.sum(ask_volumes[:, :3], axis=1)
+        
+        # Compute instantaneous aggregate OFI
+        agg_ofi = (agg_bid_vol - agg_ask_vol) / (agg_bid_vol + agg_ask_vol + 1e-8)
+        
+        # Multi-timeframe rolling OFI
+        timeframes = [5, 10, 30]
+        
+        for window in timeframes:
+            # Rolling mean OFI
+            rolling_ofi = self._rolling_calculation(
+                np.mean, 
+                pd.Series(agg_ofi), 
+                window
+            )
+            features[f'ofi_rolling_mean_{window}'] = rolling_ofi
+            
+            # Rolling volatility of OFI (measures OFI instability)
+            rolling_ofi_vol = self._rolling_calculation(
+                np.std,
+                pd.Series(agg_ofi),
+                window  
+            )
+            features[f'ofi_rolling_vol_{window}'] = rolling_ofi_vol
+            
+            # OFI momentum (current vs rolling mean)
+            ofi_momentum = agg_ofi - rolling_ofi
+            features[f'ofi_momentum_{window}'] = ofi_momentum
+        
+        return features
+    
+    def _compute_price_impact_measures(self, lob_data):
+        """
+        Compute price impact measures from trade data and price movements
+        
+        Args:
+            lob_data: DataFrame with LOB data including buys, sells, midpoint
+            
+        Returns:
+            Dictionary of price impact features
+        """
+        features = {}
+        
+        midpoint = lob_data['midpoint'].values
+        buys = lob_data['buys'].values if 'buys' in lob_data.columns else np.zeros_like(midpoint)
+        sells = lob_data['sells'].values if 'sells' in lob_data.columns else np.zeros_like(midpoint)
+        
+        # Compute price returns
+        price_changes = np.diff(midpoint)
+        price_changes = np.concatenate([[0], price_changes])
+        
+        # Trade imbalance
+        trade_imbalance = buys - sells
+        
+        # Price impact: correlation between trade imbalance and subsequent price changes
+        # Shift price changes forward to measure impact
+        future_price_changes = np.concatenate([price_changes[1:], [0]])
+        
+        # Rolling correlation between trade imbalance and future price changes
+        impact_5 = self._rolling_correlation(trade_imbalance, future_price_changes, 5)
+        impact_15 = self._rolling_correlation(trade_imbalance, future_price_changes, 15)
+        
+        features['price_impact_5'] = impact_5
+        features['price_impact_15'] = impact_15
+        
+        # Volatility-adjusted price impact
+        price_vol = self._rolling_calculation(np.std, pd.Series(price_changes), 20)
+        vol_adjusted_impact = impact_15 / (price_vol + 1e-8)
+        features['vol_adjusted_impact'] = vol_adjusted_impact
+        
+        return features
+    
+    def _rolling_correlation(self, x, y, window):
+        """Compute rolling correlation between two series"""
+        correlations = []
+        
+        for i in range(len(x)):
+            start_idx = max(0, i - window + 1)
+            x_window = x[start_idx:i+1]
+            y_window = y[start_idx:i+1]
+            
+            if len(x_window) > 1 and np.std(x_window) > 1e-8 and np.std(y_window) > 1e-8:
+                corr = np.corrcoef(x_window, y_window)[0, 1]
+                if np.isnan(corr):
+                    corr = 0.0
+            else:
+                corr = 0.0
+                
+            correlations.append(corr)
+            
+        return np.array(correlations)
+    
+    def _compute_order_arrival_cancellation_rates(self, lob_data):
+        """
+        Compute order arrival and cancellation rates from LOB data
+        
+        Args:
+            lob_data: DataFrame with LOB data including limit, market, cancel notionals
+            
+        Returns:
+            Dictionary of order flow features
+        """
+        features = {}
+        
+        # Extract order flow data from top 3 levels
+        bid_limit_total = np.sum([lob_data[f'bids_limit_notional_{i}'].values 
+                                for i in range(min(3, self.levels))], axis=0)
+        ask_limit_total = np.sum([lob_data[f'asks_limit_notional_{i}'].values 
+                                for i in range(min(3, self.levels))], axis=0)
+        
+        bid_cancel_total = np.sum([lob_data[f'bids_cancel_notional_{i}'].values 
+                                 for i in range(min(3, self.levels))], axis=0)
+        ask_cancel_total = np.sum([lob_data[f'asks_cancel_notional_{i}'].values 
+                                 for i in range(min(3, self.levels))], axis=0)
+        
+        bid_market_total = np.sum([lob_data[f'bids_market_notional_{i}'].values 
+                                 for i in range(min(3, self.levels))], axis=0)
+        ask_market_total = np.sum([lob_data[f'asks_market_notional_{i}'].values 
+                                 for i in range(min(3, self.levels))], axis=0)
+        
+        # Order arrival rate (new limit orders)
+        total_limit_arrivals = bid_limit_total + ask_limit_total
+        limit_imbalance = (bid_limit_total - ask_limit_total) / (total_limit_arrivals + 1e-8)
+        
+        # Order cancellation rate
+        total_cancellations = bid_cancel_total + ask_cancel_total
+        cancel_imbalance = (bid_cancel_total - ask_cancel_total) / (total_cancellations + 1e-8)
+        
+        # Market order arrival rate (immediate execution)
+        total_market_orders = bid_market_total + ask_market_total
+        market_imbalance = (bid_market_total - ask_market_total) / (total_market_orders + 1e-8)
+        
+        # Rolling averages to smooth the signals
+        features['limit_order_imbalance'] = self._rolling_calculation(
+            np.mean, pd.Series(limit_imbalance), 10
+        )
+        
+        features['cancel_order_imbalance'] = self._rolling_calculation(
+            np.mean, pd.Series(cancel_imbalance), 10
+        )
+        
+        features['market_order_imbalance'] = self._rolling_calculation(
+            np.mean, pd.Series(market_imbalance), 10
+        )
+        
+        # Net order flow (limit arrivals - cancellations)
+        net_bid_flow = bid_limit_total - bid_cancel_total
+        net_ask_flow = ask_limit_total - ask_cancel_total
+        net_flow_imbalance = (net_bid_flow - net_ask_flow) / (
+            np.abs(net_bid_flow) + np.abs(net_ask_flow) + 1e-8
+        )
+        
+        features['net_order_flow_imbalance'] = self._rolling_calculation(
+            np.mean, pd.Series(net_flow_imbalance), 15
+        )
+        
+        return features
