@@ -7,11 +7,35 @@ development/task2/src/task2_dsets/
 original/Task_2_starter_kit/task2_dsets.zip
 original/Task_2_starter_kit/task2_dsets/
 
+# Large data files
+*.csv
+*.npy
+*.npz
+*.parquet
+*.hdf5
+*.feather
+*.dat
+*.bin
+
+# Archive files
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+*.bz2
+*.gz
+
 # Model files
 *.pkl
 *.pth
 *.h5
 *.joblib
+*.ckpt
+*.pt
+*.model
+*.weights
 
 # Python cache
 __pycache__/
