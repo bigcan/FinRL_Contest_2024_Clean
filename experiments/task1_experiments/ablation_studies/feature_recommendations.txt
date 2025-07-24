@@ -1,0 +1,13 @@
+FEATURE ANALYSIS RECOMMENDATIONS
+========================================
+
+Selected features for next training:
+1. original_0
+2. ema_20
+3. original_4
+4. momentum_20
+5. order_flow_5
+6. momentum_5
+
+Total recommended features: 6
+Reduction from original: 16 -> 6

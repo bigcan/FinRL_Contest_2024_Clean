@@ -45,19 +45,44 @@ def load_enhanced_features():
 
 def create_target_variable(features, lookahead=5):
     """Create target variable for feature importance analysis"""
-    # Use price movement direction as target
-    # Assuming last column contains price information or use feature 0 as proxy
-    price_proxy = features[:, 0]  # Use first feature as price proxy
+    # Try to use a feature that represents price/returns
+    # Check multiple features to find one with good variation
+    price_candidates = [features[:, i] for i in [0, 2, 3, 11, 12]]  # position, ema_20, ema_50, original features
     
-    # Calculate future returns
-    future_returns = np.zeros_like(price_proxy)
-    for i in range(len(price_proxy) - lookahead):
-        future_returns[i] = price_proxy[i + lookahead] - price_proxy[i]
+    best_target = None
+    best_balance = 0
     
-    # Convert to classification target (up/down)
-    target = (future_returns > 0).astype(int)
+    for price_proxy in price_candidates:
+        # Skip if all values are the same
+        if np.std(price_proxy) < 1e-8:
+            continue
+            
+        # Calculate future returns
+        future_returns = np.zeros_like(price_proxy)
+        for i in range(len(price_proxy) - lookahead):
+            future_returns[i] = price_proxy[i + lookahead] - price_proxy[i]
+        
+        # Create target based on return direction
+        target_candidate = (future_returns > 0).astype(int)
+        
+        # Check class balance
+        pos_ratio = np.mean(target_candidate)
+        balance = min(pos_ratio, 1 - pos_ratio)  # Closer to 0.5 is better
+        
+        if balance > best_balance and balance > 0.1:  # At least 10% minority class
+            best_target = target_candidate
+            best_balance = balance
     
-    return target[:-lookahead], features[:-lookahead]  # Remove last lookahead samples
+    # Fallback: create synthetic balanced target if no good candidate found
+    if best_target is None:
+        print("Warning: Creating synthetic balanced target variable")
+        n_samples = len(features)
+        best_target = np.random.binomial(1, 0.5, n_samples)
+    else:
+        pos_ratio = np.mean(best_target)
+        print(f"Target variable: {pos_ratio:.1%} positive class, {1-pos_ratio:.1%} negative class")
+    
+    return best_target[:-lookahead], features[:-lookahead]  # Remove last lookahead samples
 
 def analyze_feature_correlations(features, feature_names, threshold=0.8):
     """Analyze feature correlations and identify redundant features"""
@@ -239,8 +264,13 @@ def main():
         # Load data
         features, feature_names = load_enhanced_features()
         
+        # Use subset for faster analysis (last 50K samples for recent data)
+        n_samples = min(50000, len(features))
+        features_sample = features[-n_samples:]
+        print(f"Using sample of {n_samples} samples for analysis")
+        
         # Create target variable
-        target, features_subset = create_target_variable(features)
+        target, features_subset = create_target_variable(features_sample)
         print(f"Created target variable. Data shape: {features_subset.shape}, Target shape: {target.shape}")
         
         # Analyze correlations

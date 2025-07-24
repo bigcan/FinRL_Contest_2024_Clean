@@ -2,7 +2,7 @@ import os
 import torch
 import numpy as np
 from erl_config import Config, build_env
-from trade_simulator import EvalTradeSimulator
+from trade_simulator import TradeSimulator, EvalTradeSimulator
 from erl_agent import AgentD3QN, AgentDoubleDQN, AgentTwinD3QN
 from collections import Counter
 from metrics import sharpe_ratio, max_drawdown, return_over_max_drawdown
@@ -163,7 +163,7 @@ def run_evaluation(save_path, agent_list):
         "env_name": "TradeSimulator-v0",
         "num_envs": num_sims,
         "max_step": max_step,
-        "state_dim": 8 + 2,
+        "state_dim": None,  # Will be auto-detected
         "action_dim": 3,
         "if_discrete": True,
         "max_position": max_position,
@@ -172,11 +172,24 @@ def run_evaluation(save_path, agent_list):
         "step_gap": step_gap,
         "dataset_path": "data/raw/task1/BTC_1sec_predict.npy",  # Evaluation dataset path
     }
+    # Detect state dimension first
+    temp_sim = TradeSimulator(num_sims=1)
+    detected_state_dim = temp_sim.state_dim
+    env_args["state_dim"] = detected_state_dim
+    
     args = Config(agent_class=None, env_class=EvalTradeSimulator, env_args=env_args)
     args.gpu_id = gpu_id
     args.random_seed = gpu_id
-    args.net_dims = (128, 128, 128)
+    args.state_dim = detected_state_dim
     args.starting_cash = 1e6
+    
+    # Use optimized architecture for 8-feature models
+    if detected_state_dim == 8:
+        args.net_dims = (128, 64, 32)
+        print(f"Using optimized architecture for 8-feature models: {args.net_dims}")
+    else:
+        args.net_dims = (128, 128, 128)
+        print(f"Using default architecture for {detected_state_dim}-feature models: {args.net_dims}")
 
     ensemble_evaluator = EnsembleEvaluator(
         save_path,
@@ -188,6 +201,13 @@ def run_evaluation(save_path, agent_list):
 
 
 if __name__ == "__main__":
-    save_path = "ensemble_teamname/ensemble_models"
+    # Use optimized models if available, fallback to standard
+    save_path = "ensemble_optimized_phase2/ensemble_models"
+    if not os.path.exists(save_path):
+        save_path = "ensemble_teamname/ensemble_models"
+        print(f"⚠️  Optimized models not found, using: {save_path}")
+    else:
+        print(f"✅ Using optimized models: {save_path}")
+    
     agent_list = [AgentD3QN, AgentDoubleDQN, AgentTwinD3QN]
     run_evaluation(save_path, agent_list)

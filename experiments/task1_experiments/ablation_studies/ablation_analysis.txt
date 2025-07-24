@@ -1,0 +1,133 @@
+ABLATION STUDY DETAILED ANALYSIS REPORT
+==================================================
+
+Study Date: 2025-07-24 21:04:09
+Total Combinations Tested: 19
+Valid Results: 19
+
+COMPLETE RESULTS:
+------------------------------
+Name: only_position_features
+  Description: Only position features
+  Features: 2
+  Accuracy: 0.494
+  Feature Names: ['position_norm', 'holding_norm']
+
+Name: only_technical_indicators
+  Description: Only technical indicators
+  Features: 6
+  Accuracy: 0.905
+  Feature Names: ['ema_20', 'ema_50', 'rsi_14', 'momentum_5', 'momentum_20', 'ema_crossover']
+
+Name: only_lob_features
+  Description: Only lob features
+  Features: 3
+  Accuracy: 0.929
+  Feature Names: ['spread_norm', 'trade_imbalance', 'order_flow_5']
+
+Name: only_original_features
+  Description: Only original features
+  Features: 5
+  Accuracy: 0.571
+  Feature Names: ['original_0', 'original_1', 'original_2', 'original_4', 'original_5']
+
+Name: cumulative_until_position_features
+  Description: All groups up to position features
+  Features: 2
+  Accuracy: 0.437
+  Feature Names: ['position_norm', 'holding_norm']
+
+Name: cumulative_until_technical_indicators
+  Description: All groups up to technical indicators
+  Features: 8
+  Accuracy: 0.563
+  Feature Names: ['position_norm', 'holding_norm', 'ema_20', 'ema_50', 'rsi_14', 'momentum_5', 'momentum_20', 'ema_crossover']
+
+Name: cumulative_until_lob_features
+  Description: All groups up to lob features
+  Features: 11
+  Accuracy: 0.485
+  Feature Names: ['position_norm', 'holding_norm', 'ema_20', 'ema_50', 'rsi_14', 'momentum_5', 'momentum_20', 'spread_norm', 'trade_imbalance', 'order_flow_5', 'ema_crossover']
+
+Name: cumulative_until_original_features
+  Description: All groups up to original features
+  Features: 16
+  Accuracy: 0.462
+  Feature Names: ['position_norm', 'holding_norm', 'ema_20', 'ema_50', 'rsi_14', 'momentum_5', 'momentum_20', 'spread_norm', 'trade_imbalance', 'order_flow_5', 'ema_crossover', 'original_0', 'original_1', 'original_2', 'original_4', 'original_5']
+
+Name: without_position_features
+  Description: All features except position features
+  Features: 14
+  Accuracy: 0.907
+  Feature Names: ['ema_20', 'ema_50', 'rsi_14', 'momentum_5', 'momentum_20', 'spread_norm', 'trade_imbalance', 'order_flow_5', 'ema_crossover', 'original_0', 'original_1', 'original_2', 'original_4', 'original_5']
+
+Name: without_technical_indicators
+  Description: All features except technical indicators
+  Features: 10
+  Accuracy: 0.499
+  Feature Names: ['position_norm', 'holding_norm', 'spread_norm', 'trade_imbalance', 'order_flow_5', 'original_0', 'original_1', 'original_2', 'original_4', 'original_5']
+
+Name: without_lob_features
+  Description: All features except lob features
+  Features: 13
+  Accuracy: 0.458
+  Feature Names: ['position_norm', 'holding_norm', 'ema_20', 'ema_50', 'rsi_14', 'momentum_5', 'momentum_20', 'ema_crossover', 'original_0', 'original_1', 'original_2', 'original_4', 'original_5']
+
+Name: without_original_features
+  Description: All features except original features
+  Features: 11
+  Accuracy: 0.477
+  Feature Names: ['position_norm', 'holding_norm', 'ema_20', 'ema_50', 'rsi_14', 'momentum_5', 'momentum_20', 'spread_norm', 'trade_imbalance', 'order_flow_5', 'ema_crossover']
+
+Name: position_features_plus_technical_indicators
+  Description: position features + technical indicators
+  Features: 8
+  Accuracy: 0.597
+  Feature Names: ['position_norm', 'holding_norm', 'ema_20', 'ema_50', 'rsi_14', 'momentum_5', 'momentum_20', 'ema_crossover']
+
+Name: position_features_plus_lob_features
+  Description: position features + lob features
+  Features: 5
+  Accuracy: 0.516
+  Feature Names: ['position_norm', 'holding_norm', 'spread_norm', 'trade_imbalance', 'order_flow_5']
+
+Name: position_features_plus_original_features
+  Description: position features + original features
+  Features: 7
+  Accuracy: 0.400
+  Feature Names: ['position_norm', 'holding_norm', 'original_0', 'original_1', 'original_2', 'original_4', 'original_5']
+
+Name: technical_indicators_plus_lob_features
+  Description: technical indicators + lob features
+  Features: 9
+  Accuracy: 0.906
+  Feature Names: ['ema_20', 'ema_50', 'rsi_14', 'momentum_5', 'momentum_20', 'spread_norm', 'trade_imbalance', 'order_flow_5', 'ema_crossover']
+
+Name: technical_indicators_plus_original_features
+  Description: technical indicators + original features
+  Features: 11
+  Accuracy: 0.905
+  Feature Names: ['ema_20', 'ema_50', 'rsi_14', 'momentum_5', 'momentum_20', 'ema_crossover', 'original_0', 'original_1', 'original_2', 'original_4', 'original_5']
+
+Name: lob_features_plus_original_features
+  Description: lob features + original features
+  Features: 8
+  Accuracy: 0.929
+  Feature Names: ['spread_norm', 'trade_imbalance', 'order_flow_5', 'original_0', 'original_1', 'original_2', 'original_4', 'original_5']
+
+Name: all_features
+  Description: All 16 enhanced features
+  Features: 16
+  Accuracy: 0.414
+  Feature Names: ['position_norm', 'holding_norm', 'ema_20', 'ema_50', 'rsi_14', 'momentum_5', 'momentum_20', 'spread_norm', 'trade_imbalance', 'order_flow_5', 'ema_crossover', 'original_0', 'original_1', 'original_2', 'original_4', 'original_5']
+
+RECOMMENDATIONS:
+--------------------
+1. BEST OVERALL: only_lob_features
+   Features: ['spread_norm', 'trade_imbalance', 'order_flow_5']
+   Accuracy: 0.929
+
+2. MOST EFFICIENT: only_lob_features
+   Features: ['spread_norm', 'trade_imbalance', 'order_flow_5']
+   Efficiency: 0.3098
+
