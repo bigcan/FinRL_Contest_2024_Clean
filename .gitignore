@@ -1,6 +1,12 @@
 # Data directory - exclude from version control
 data/
 
+# Task 2 datasets - too large for GitHub
+development/task2/src/task2_dsets.zip
+development/task2/src/task2_dsets/
+original/Task_2_starter_kit/task2_dsets.zip
+original/Task_2_starter_kit/task2_dsets/
+
 # Model files
 *.pkl
 *.pth
