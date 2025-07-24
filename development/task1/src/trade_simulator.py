@@ -4,6 +4,7 @@ import torch as th
 import numpy as np
 import pandas as pd
 from data_config import ConfigData
+from reward_functions import create_reward_calculator
 
 
 class TradeSimulator:
@@ -111,6 +112,15 @@ class TradeSimulator:
         """stop-loss"""
         self.best_price = th.zeros((num_sims,), dtype=th.float32, device=device)
         self.stop_loss_thresh = 1e-3
+        
+        """Enhanced Reward System - addresses profitability issues"""
+        # Default to multi_objective for best performance, can be overridden
+        self.reward_calculator = create_reward_calculator(
+            reward_type="multi_objective",
+            lookback_window=100,
+            device=str(self.device)
+        )
+        self.reward_type = "multi_objective"  # Track current reward type
 
     def _reset(self, slippage=None, _if_random=True):
         self.slippage = slippage if isinstance(slippage, float) else self.slippage
@@ -131,6 +141,9 @@ class TradeSimulator:
 
         """stop-loss"""
         self.best_price = th.zeros((self.num_sims,), dtype=th.float32, device=self.device)
+        
+        """reset reward calculator for new episode"""
+        self.reward_calculator.reset()
 
         step_is = self.step_is + self.step_i
         state = self.get_state(step_is_cpu=step_is.to(th.device("cpu")))
@@ -219,7 +232,14 @@ class TradeSimulator:
         new_cash = old_cash - cost * th.where(direction, 1 + self.slippage, 1 - self.slippage)
         new_asset = new_cash + new_position * mid_price
 
-        reward = new_asset - old_asset
+        # Enhanced reward calculation - addresses profitability issues
+        reward = self.reward_calculator.calculate_reward(
+            old_asset=old_asset,
+            new_asset=new_asset, 
+            action_int=action_int,
+            mid_price=mid_price,
+            slippage=self.slippage
+        )
 
         self.cash = new_cash  # update the cash
         self.asset = new_asset  # update the total asset
@@ -262,6 +282,42 @@ class TradeSimulator:
                 ),
                 dim=1,
             )
+    
+    def set_reward_type(self, reward_type: str):
+        """
+        Change the reward calculation method
+        
+        Args:
+            reward_type: "simple", "transaction_cost_adjusted", "sharpe_adjusted", "multi_objective"
+        """
+        if reward_type != self.reward_type:
+            print(f"🎯 Switching reward type from '{self.reward_type}' to '{reward_type}'")
+            self.reward_calculator = create_reward_calculator(
+                reward_type=reward_type,
+                lookback_window=100,
+                device=str(self.device)
+            )
+            self.reward_type = reward_type
+    
+    def get_reward_metrics(self) -> dict:
+        """Get current reward system performance metrics"""
+        metrics = self.reward_calculator.get_performance_metrics()
+        metrics["reward_type"] = self.reward_type
+        return metrics
+    
+    def print_reward_performance(self):
+        """Print current reward system performance"""
+        metrics = self.get_reward_metrics()
+        print(f"\n📊 Reward System Performance ({metrics['reward_type']}):")
+        print(f"   💰 Total Transaction Costs: ${metrics.get('total_transaction_costs', 0):.2f}")
+        print(f"   📉 Current Drawdown: {metrics.get('current_drawdown', 0):.4f}")
+        print(f"   📈 Peak Asset Value: ${metrics.get('peak_asset_value', 0):,.2f}")
+        
+        if 'mean_return' in metrics:
+            print(f"   📊 Mean Return: {metrics['mean_return']:.6f}")
+            print(f"   📊 Return Volatility: {metrics['return_volatility']:.6f}")
+            print(f"   📊 Sharpe Ratio: {metrics['sharpe_ratio']:.4f}")
+            print(f"   📊 Max Drawdown Period: {metrics['max_drawdown_period']:.4f}")
 
 
 class EvalTradeSimulator(TradeSimulator):
