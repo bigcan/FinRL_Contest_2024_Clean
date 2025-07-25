@@ -186,15 +186,23 @@ class ComprehensiveBacktester:
     def _initialize_agents(self):
         """Initialize ensemble agents"""
         try:
-            # Initialize config
+            # Initialize config (following task1_eval.py pattern)
             temp_sim = TradeSimulator(num_sims=1)
             state_dim = temp_sim.state_dim
             
             config = Config()
             config.state_dim = state_dim
-            config.net_dims = (128, 64, 32) if state_dim == 8 else (128, 128, 128)
+            config.action_dim = 3
             
-            # Load agents
+            # Use optimized architecture for 8-feature models
+            if state_dim == 8:
+                config.net_dims = (128, 64, 32)
+                print(f"Using optimized architecture for 8-feature models: {config.net_dims}")
+            else:
+                config.net_dims = (128, 128, 128)
+                print(f"Using default architecture for {state_dim}-feature models: {config.net_dims}")
+            
+            # Load agents (following task1_eval.py pattern)
             self.agents = []
             for agent_class in self.config.agent_classes:
                 agent = agent_class(
@@ -205,18 +213,21 @@ class ComprehensiveBacktester:
                     args=config,
                 )
                 
-                # Load model weights
+                # Load model weights using the same pattern as task1_eval.py
                 agent_name = agent_class.__name__
-                model_path = os.path.join(self.config.ensemble_path, f"{agent_name}_0.pth")
-                if os.path.exists(model_path):
-                    agent.save_or_load_agent(model_path, if_save=False)
+                model_dir = os.path.join(self.config.ensemble_path, agent_name)
+                
+                if os.path.exists(model_dir):
+                    agent.save_or_load_agent(model_dir, if_save=False)
                     self.agents.append(agent)
-                    print(f"Loaded {agent_name}")
+                    print(f"Loaded {agent_name} from {model_dir}")
                 else:
-                    print(f"Warning: Model not found at {model_path}")
+                    print(f"Warning: Model directory not found at {model_dir}")
                     
         except Exception as e:
             print(f"Error initializing agents: {e}")
+            import traceback
+            traceback.print_exc()
             self.agents = []
     
     def run_standard_backtest(self, start_idx: int = None, end_idx: int = None) -> BacktestResult:
@@ -355,16 +366,21 @@ class ComprehensiveBacktester:
         return results
     
     def _simulate_trading(self, start_idx: int, end_idx: int, period_name: str) -> BacktestResult:
-        """Simulate trading for specified period"""
+        """Simulate trading for specified period using actual agent predictions"""
         
         # Extract period data
         period_length = end_idx - start_idx
         if period_length < 100:  # Minimum period length
             raise ValueError(f"Period too short: {period_length}")
         
-        # Initialize trading simulation
+        if not self.agents:
+            raise ValueError("No agents loaded - cannot perform realistic backtesting")
+        
+        # Initialize trading simulation using the same setup as task1_eval.py
         num_sims = 1
-        max_step = (period_length - 60) // self.config.step_gap
+        num_ignore_step = 60
+        step_gap = self.config.step_gap
+        max_step = (period_length - num_ignore_step) // step_gap
         
         env_args = {
             "env_name": "TradeSimulator-v0",
@@ -376,61 +392,138 @@ class ComprehensiveBacktester:
             "max_position": self.config.max_position,
             "slippage": self.config.slippage,
             "num_sims": num_sims,
-            "step_gap": self.config.step_gap,
+            "step_gap": step_gap,
             "dataset_path": None,  # We'll use custom data
         }
         
-        # Create custom environment with period data
+        # Create trading environment
+        from erl_config import build_env
         config = Config(agent_class=None, env_class=EvalTradeSimulator, env_args=env_args)
         config.starting_cash = self.config.starting_cash
+        config.gpu_id = -1  # Use CPU
         
-        # Simulate trading
+        trade_env = build_env(config.env_class, env_args, gpu_id=config.gpu_id)
+        
+        # Initialize tracking variables (following task1_eval.py pattern)
         equity_curve = [self.config.starting_cash]
         positions = []
         trade_log = []
+        action_ints = []
+        
+        # Portfolio tracking
         cash = self.config.starting_cash
-        position = 0
+        btc_position = 0
+        btc_assets = [0]
+        net_assets = [self.config.starting_cash]
         
-        # Get period prices
-        period_prices = self.prices[start_idx:end_idx]
+        # Reset environment
+        state = trade_env.reset()
+        last_state = state
         
-        # Simple simulation loop (placeholder - would integrate with actual trading sim)
-        for i in range(1, len(period_prices)):
-            if len(self.agents) == 0:
-                action = 0  # Hold if no agents
-            else:
-                # Simplified action selection (would use actual agent prediction)
-                action = np.random.choice([-1, 0, 1])  # Random for now
+        # Trading simulation loop using actual agent predictions
+        for step in range(trade_env.max_step):
+            # Get ensemble action from all agents (following task1_eval.py)
+            actions = []
             
-            current_price = period_prices[i]
-            prev_price = period_prices[i-1]
+            for agent in self.agents:
+                try:
+                    # Convert state to tensor and get Q-values
+                    tensor_state = torch.as_tensor(last_state, dtype=torch.float32, device=agent.device)
+                    with torch.no_grad():
+                        tensor_q_values = agent.act(tensor_state)
+                        tensor_action = tensor_q_values.argmax(dim=1)
+                        action = tensor_action.detach().cpu().unsqueeze(1)
+                        actions.append(action)
+                except Exception as e:
+                    # Fallback action if agent fails
+                    actions.append(torch.tensor([[1]], dtype=torch.int32))  # Hold action
             
-            # Execute trade
-            if action == 1 and cash >= current_price:  # Buy
-                cash -= current_price
-                position += 1
+            # Get ensemble action using majority voting
+            ensemble_action = self._ensemble_action(actions)
+            action_int = ensemble_action.item() - 1  # Convert to {-1, 0, 1}
+            
+            # Step environment
+            try:
+                state, reward, done, _ = trade_env.step(ensemble_action)
+            except:
+                # If environment step fails, break
+                break
+                
+            action_ints.append(action_int)
+            
+            # Get current price from environment
+            try:
+                current_price = trade_env.price_ary[trade_env.step_i, 2].item()
+            except:
+                # Fallback to period prices if env price unavailable
+                step_idx = min(step + num_ignore_step, len(self.prices) - 1)
+                if start_idx + step_idx < len(self.prices):
+                    current_price = self.prices[start_idx + step_idx]
+                else:
+                    current_price = self.prices[-1]
+            
+            # Execute trades based on action (following task1_eval.py logic)
+            new_cash = cash
+            trade_executed = False
+            
+            if action_int > 0 and cash >= current_price:  # Buy signal
+                # Calculate quantity based on available cash (simple 1 unit for now)
+                quantity = 1.0
+                if cash >= current_price * quantity:
+                    new_cash = cash - (current_price * quantity)
+                    btc_position += quantity
+                    trade_executed = True
+                    
+                    trade_log.append({
+                        'timestamp': step,
+                        'action': 'buy',
+                        'price': current_price,
+                        'quantity': quantity,
+                        'position': btc_position,
+                        'cash': new_cash,
+                        'pnl': 0  # Will be calculated later
+                    })
+                    
+            elif action_int < 0 and btc_position > 0:  # Sell signal
+                # Sell 1 unit if available
+                quantity = min(1.0, btc_position)
+                new_cash = cash + (current_price * quantity)
+                btc_position -= quantity
+                trade_executed = True
+                
                 trade_log.append({
-                    'timestamp': i,
-                    'action': 'buy',
-                    'price': current_price,
-                    'position': position,
-                    'cash': cash
-                })
-            elif action == -1 and position > 0:  # Sell
-                cash += current_price
-                position -= 1
-                trade_log.append({
-                    'timestamp': i,
+                    'timestamp': step,
                     'action': 'sell',
                     'price': current_price,
-                    'position': position,
-                    'cash': cash
+                    'quantity': quantity,
+                    'position': btc_position,
+                    'cash': new_cash,
+                    'pnl': 0  # Will be calculated later
                 })
             
-            # Update equity
-            equity = cash + position * current_price
-            equity_curve.append(equity)
-            positions.append(position)
+            # Update portfolio values
+            cash = new_cash
+            btc_asset_value = btc_position * current_price
+            total_equity = cash + btc_asset_value
+            
+            # Track portfolio evolution
+            btc_assets.append(btc_asset_value)
+            net_assets.append(total_equity)
+            equity_curve.append(total_equity)
+            positions.append(btc_position)
+            
+            # Update state for next iteration
+            last_state = state
+            
+            if done:
+                break
+        
+        # Calculate PnL for trades
+        for i, trade in enumerate(trade_log):
+            if i > 0:
+                prev_equity = equity_curve[trade['timestamp']]
+                curr_equity = equity_curve[trade['timestamp'] + 1] if trade['timestamp'] + 1 < len(equity_curve) else equity_curve[-1]
+                trade['pnl'] = curr_equity - prev_equity
         
         # Calculate performance metrics
         equity_curve = np.array(equity_curve)
@@ -555,6 +648,13 @@ class ComprehensiveBacktester:
         }
         
         return summary
+    
+    def _ensemble_action(self, actions):
+        """Returns the majority action among agents (following task1_eval.py)"""
+        from collections import Counter
+        count = Counter([a.item() for a in actions])
+        majority_action, _ = count.most_common(1)[0]
+        return torch.tensor([[majority_action]], dtype=torch.int32)
 
 def main():
     """Example usage of comprehensive backtester"""

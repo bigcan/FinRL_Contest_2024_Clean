@@ -37,7 +37,7 @@ class ComprehensiveBacktestRunner:
         
         default_config = {
             # Backtesting parameters
-            'ensemble_path': 'ensemble_optimized_phase2',
+            'ensemble_path': 'ensemble_optimized_phase2/ensemble_models',
             'data_split_ratio': 0.7,
             'walk_forward_window': 3000,
             'overlap_ratio': 0.2,
@@ -357,14 +357,97 @@ class ComprehensiveBacktestRunner:
         }
     
     def _run_cost_analysis(self, backtest_results: dict) -> dict:
-        """Run transaction cost analysis"""
+        """Run transaction cost analysis using actual trade logs"""
         
         cost_analyzer = self.components['cost_analyzer']
         
-        # Simulate transaction costs for all trades
-        print("Simulating transaction costs...")
+        # Analyze actual trades from backtest results
+        print("Analyzing transaction costs from actual trades...")
         
         all_results = backtest_results['all_results']
+        all_executions = []
+        cost_bps_list = []
+        
+        for result in all_results:
+            # Get actual trade log from backtest result
+            if hasattr(result, 'trade_log') and result.trade_log:
+                trades = result.trade_log
+                
+                for trade in trades:
+                    try:
+                        # Extract trade information
+                        action = trade.get('action', 'buy')
+                        price = trade.get('price', 50000)
+                        quantity = trade.get('quantity', 1.0)
+                        
+                        # Create realistic market data based on trade price
+                        spread_pct = np.random.uniform(0.0001, 0.0005)  # 1-5 bps spread
+                        market_data = {
+                            'bid': price * (1 - spread_pct/2),
+                            'ask': price * (1 + spread_pct/2),
+                            'volume': np.random.uniform(500, 2000),
+                            'volatility': np.random.uniform(0.015, 0.035),
+                            'mid': price
+                        }
+                        
+                        # Calculate execution costs for actual trade
+                        from transaction_cost_analyzer import OrderSide, OrderType
+                        
+                        order_side = OrderSide.BUY if action == 'buy' else OrderSide.SELL
+                        order_type = OrderType.MARKET  # Assuming market orders
+                        
+                        execution = cost_analyzer.calculate_execution_costs(
+                            order_side=order_side,
+                            order_type=order_type,
+                            quantity=quantity,
+                            target_price=price,
+                            market_data=market_data,
+                            order_id=f"trade_{len(all_executions)}"
+                        )
+                        
+                        all_executions.append(execution)
+                        cost_bps = cost_analyzer.calculate_cost_basis_points(execution)
+                        cost_bps_list.append(cost_bps)
+                        
+                    except Exception as e:
+                        print(f"⚠️ Error analyzing trade: {e}")
+                        continue
+        
+        # Fall back to simulation if no actual trades found
+        if not all_executions:
+            print("No actual trades found, falling back to simulation...")
+            return self._simulate_cost_analysis(all_results, cost_analyzer)
+        
+        # Analyze costs from actual trades
+        if cost_bps_list:
+            avg_cost = np.mean(cost_bps_list)
+            median_cost = np.median(cost_bps_list)
+            total_trades = len(cost_bps_list)
+            
+            print(f"✓ Transaction cost analysis: {total_trades} actual trades analyzed")
+            print(f"✓ Average cost: {avg_cost:.1f} basis points")
+            print(f"✓ Median cost: {median_cost:.1f} basis points")
+            
+            # Generate comprehensive cost analysis
+            analysis = cost_analyzer.analyze_execution_quality()
+            
+            return {
+                'actual_trades': True,
+                'executions': all_executions,
+                'cost_bps_list': cost_bps_list,
+                'analysis': analysis,
+                'average_cost_bps': avg_cost,
+                'median_cost_bps': median_cost,
+                'total_trades': total_trades,
+                'cost_report': cost_analyzer.generate_cost_analysis_report()
+            }
+        else:
+            print("⚠️ No valid cost data, falling back to simulation")
+            return self._simulate_cost_analysis(all_results, cost_analyzer)
+    
+    def _simulate_cost_analysis(self, all_results: list, cost_analyzer) -> dict:
+        """Fallback simulation-based cost analysis"""
+        
         simulated_costs = []
         
         for result in all_results:
