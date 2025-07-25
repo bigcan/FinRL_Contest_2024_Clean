@@ -337,7 +337,7 @@ class ExtendedEnsembleTrainer:
         all_scores = []
         for i, agent_class in enumerate(self.agent_classes):
             try:
-                agent, best_score = self.train_single_agent_extended(config, i)
+                agent, best_score = self.train_single_agent_extended(agent_class, config, i)
                 all_scores.append(best_score)
                 print(f"✅ Agent {i+1}/3 completed with score {best_score:.4f}")
             except Exception as e:

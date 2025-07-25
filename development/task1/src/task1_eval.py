@@ -201,13 +201,20 @@ def run_evaluation(save_path, agent_list):
 
 
 if __name__ == "__main__":
-    # Use optimized models if available, fallback to standard
-    save_path = "ensemble_optimized_phase2/ensemble_models"
-    if not os.path.exists(save_path):
-        save_path = "ensemble_teamname/ensemble_models"
-        print(f"⚠️  Optimized models not found, using: {save_path}")
+    import sys
+    
+    # Allow custom save path as command line argument
+    if len(sys.argv) > 2:
+        save_path = sys.argv[2]
+        print(f"🎯 Using specified models: {save_path}")
     else:
-        print(f"✅ Using optimized models: {save_path}")
+        # Use optimized models if available, fallback to standard
+        save_path = "ensemble_optimized_phase2/ensemble_models"
+        if not os.path.exists(save_path):
+            save_path = "ensemble_teamname/ensemble_models"
+            print(f"⚠️  Optimized models not found, using: {save_path}")
+        else:
+            print(f"✅ Using optimized models: {save_path}")
     
     agent_list = [AgentD3QN, AgentDoubleDQN, AgentTwinD3QN]
     run_evaluation(save_path, agent_list)
