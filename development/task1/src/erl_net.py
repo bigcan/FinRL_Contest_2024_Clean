@@ -136,3 +136,149 @@ def build_mlp(dims: [int], activation: nn = None, if_raw_out: bool = True) -> nn
 def layer_init_with_orthogonal(layer, std=1.0, bias_const=1e-6):
     torch.nn.init.orthogonal_(layer.weight, std)
     torch.nn.init.constant_(layer.bias, bias_const)
+
+
+class ActorDiscretePPO(nn.Module):
+    """
+    Discrete action actor network for PPO
+    Outputs action probabilities for discrete action space
+    """
+    
+    def __init__(self, dims: [int], state_dim: int, action_dim: int):
+        super().__init__()
+        self.state_dim = state_dim
+        self.action_dim = action_dim
+        
+        # State normalization
+        self.state_avg = nn.Parameter(torch.zeros((state_dim,)), requires_grad=False)
+        self.state_std = nn.Parameter(torch.ones((state_dim,)), requires_grad=False)
+        
+        # Policy network
+        self.net = build_mlp(dims=[state_dim, *dims, action_dim], activation=nn.ReLU, if_raw_out=True)
+        
+        # Initialize output layer with smaller weights for stable learning
+        layer_init_with_orthogonal(self.net[-1], std=0.01)
+        
+        self.softmax = nn.Softmax(dim=-1)
+    
+    def state_norm(self, state: TEN) -> TEN:
+        """Normalize state"""
+        return (state - self.state_avg) / self.state_std
+    
+    def forward(self, state: TEN) -> TEN:
+        """Forward pass returning action probabilities"""
+        state = self.state_norm(state)
+        logits = self.net(state)
+        action_probs = self.softmax(logits)
+        
+        # Add small epsilon to prevent log(0)
+        action_probs = action_probs + 1e-8
+        action_probs = action_probs / action_probs.sum(dim=-1, keepdim=True)
+        
+        return action_probs
+    
+    def get_action_log_prob(self, state: TEN, action: TEN) -> TEN:
+        """Get log probability of given action"""
+        action_probs = self.forward(state)
+        action_log_probs = torch.log(action_probs)
+        return action_log_probs.gather(1, action.long())
+
+
+class CriticAdv(nn.Module):
+    """
+    Advantage critic network for PPO
+    Estimates state values for advantage computation
+    """
+    
+    def __init__(self, dims: [int], state_dim: int, output_dim: int = 1):
+        super().__init__()
+        self.state_dim = state_dim
+        self.output_dim = output_dim
+        
+        # State normalization  
+        self.state_avg = nn.Parameter(torch.zeros((state_dim,)), requires_grad=False)
+        self.state_std = nn.Parameter(torch.ones((state_dim,)), requires_grad=False)
+        
+        # Value normalization
+        self.value_avg = nn.Parameter(torch.zeros((output_dim,)), requires_grad=False)
+        self.value_std = nn.Parameter(torch.ones((output_dim,)), requires_grad=False)
+        
+        # Value network
+        self.net = build_mlp(dims=[state_dim, *dims, output_dim], activation=nn.ReLU, if_raw_out=True)
+        
+        # Initialize output layer
+        layer_init_with_orthogonal(self.net[-1], std=1.0)
+    
+    def state_norm(self, state: TEN) -> TEN:
+        """Normalize state"""
+        return (state - self.state_avg) / self.state_std
+    
+    def value_re_norm(self, value: TEN) -> TEN:
+        """Denormalize value"""
+        return value * self.value_std + self.value_avg
+    
+    def forward(self, state: TEN) -> TEN:
+        """Forward pass returning state values"""
+        state = self.state_norm(state)
+        value = self.net(state)
+        value = self.value_re_norm(value)
+        return value
+
+
+class ActorCriticPPO(nn.Module):
+    """
+    Combined Actor-Critic network for PPO
+    Shares feature extraction between policy and value networks
+    """
+    
+    def __init__(self, dims: [int], state_dim: int, action_dim: int):
+        super().__init__()
+        self.state_dim = state_dim
+        self.action_dim = action_dim
+        
+        # State normalization
+        self.state_avg = nn.Parameter(torch.zeros((state_dim,)), requires_grad=False)
+        self.state_std = nn.Parameter(torch.ones((state_dim,)), requires_grad=False)
+        
+        # Shared feature extraction
+        self.shared_net = build_mlp(dims=[state_dim, *dims[:-1]], activation=nn.ReLU, if_raw_out=False)
+        
+        # Policy head
+        self.policy_head = nn.Linear(dims[-2], action_dim)
+        layer_init_with_orthogonal(self.policy_head, std=0.01)
+        
+        # Value head  
+        self.value_head = nn.Linear(dims[-2], 1)
+        layer_init_with_orthogonal(self.value_head, std=1.0)
+        
+        self.softmax = nn.Softmax(dim=-1)
+    
+    def state_norm(self, state: TEN) -> TEN:
+        """Normalize state"""
+        return (state - self.state_avg) / self.state_std
+    
+    def forward(self, state: TEN) -> tuple:
+        """Forward pass returning both action probabilities and state values"""
+        state = self.state_norm(state)
+        features = self.shared_net(state)
+        
+        # Policy output
+        policy_logits = self.policy_head(features)
+        action_probs = self.softmax(policy_logits)
+        action_probs = action_probs + 1e-8  # Prevent log(0)
+        action_probs = action_probs / action_probs.sum(dim=-1, keepdim=True)
+        
+        # Value output
+        state_values = self.value_head(features)
+        
+        return action_probs, state_values
+    
+    def get_action_probs(self, state: TEN) -> TEN:
+        """Get only action probabilities"""
+        action_probs, _ = self.forward(state)
+        return action_probs
+    
+    def get_state_values(self, state: TEN) -> TEN:
+        """Get only state values"""
+        _, state_values = self.forward(state)
+        return state_values
