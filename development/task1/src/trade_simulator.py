@@ -75,14 +75,59 @@ class TradeSimulator:
         self.price_ary[:, 0] = self.price_ary[:, 2] * (1 + self.price_ary[:, 0])
         self.price_ary[:, 1] = self.price_ary[:, 2] * (1 + self.price_ary[:, 1])
 
-        """Align with the rear of the dataset instead"""
+        """
+        DATA ALIGNMENT LOGIC - CRITICAL FOR PROPER FUNCTIONING
+        
+        This section handles alignment between factor_ary (predictive features) and price_ary (market prices).
+        
+        Key Details:
+        - factor_ary: Contains predictive features/signals (usually shorter than price data)
+        - price_ary: Contains market price data (bid, ask, midpoint prices)
+        
+        Historical Alignment Strategy:
+        The system uses "rear alignment" instead of "front alignment" because:
+        
+        1. REAR ALIGNMENT (Current Implementation):
+           - Takes the LAST N rows of price_ary where N = len(factor_ary)
+           - Ensures we use the most recent/relevant market data
+           - Code: self.price_ary = self.price_ary[-self.factor_ary.shape[0]:, :]
+           
+        2. FRONT ALIGNMENT (Commented Out):
+           - Would take the FIRST N rows of price_ary
+           - Code: self.price_ary = self.price_ary[: self.factor_ary.shape[0], :]
+           - Less desirable as it uses older market data
+        
+        Why Rear Alignment Matters:
+        - Predictive models often generate features for recent time periods
+        - Using corresponding recent price data ensures temporal consistency
+        - Avoids train/test data leakage by maintaining chronological order
+        - Critical for realistic backtesting and live trading deployment
+        
+        Data Shape Validation:
+        - After alignment: assert self.price_ary.shape[0] == self.factor_ary.shape[0]
+        - Ensures perfect temporal alignment between features and prices
+        - Both arrays must have identical length for environment to function properly
+        
+        Potential Issues & Considerations:
+        - If factor_ary is longer than price_ary, this will fail (need more price data)
+        - If there's a significant time gap between factor and price data, alignment may be incorrect
+        - Feature generation and price data collection must be synchronized in time
+        - Any changes to this logic should be thoroughly tested across different data periods
+        """
+        # Original front alignment (commented out for reference)
         # self.price_ary = self.price_ary[: self.factor_ary.shape[0], :]
+        
+        # Current rear alignment implementation
         self.price_ary = self.price_ary[-self.factor_ary.shape[0] :, :]
 
         self.price_ary = th.tensor(self.price_ary, dtype=th.float32)  # CPU
 
         self.seq_len = 3600
         self.full_seq_len = self.price_ary.shape[0]
+        
+        # Enhanced validation with detailed error reporting
+        self._validate_data_alignment()
+        
         assert self.price_ary.shape[0] == self.factor_ary.shape[0]
 
         # reset()
@@ -121,6 +166,85 @@ class TradeSimulator:
             device=str(self.device)
         )
         self.reward_type = "multi_objective"  # Track current reward type
+
+    def _validate_data_alignment(self):
+        """
+        Comprehensive validation of data alignment between factor_ary and price_ary
+        
+        Provides detailed diagnostics to help debug alignment issues and ensure
+        data integrity for training and evaluation.
+        """
+        factor_shape = self.factor_ary.shape
+        price_shape = self.price_ary.shape
+        
+        print(f"📊 Data Alignment Validation:")
+        print(f"   Factor array shape: {factor_shape}")
+        print(f"   Price array shape: {price_shape}")
+        print(f"   Feature names available: {len(self.feature_names) > 0}")
+        
+        # Check basic shape compatibility
+        if factor_shape[0] != price_shape[0]:
+            print(f"❌ ALIGNMENT ERROR:")
+            print(f"   Factor length: {factor_shape[0]}")
+            print(f"   Price length: {price_shape[0]}")
+            print(f"   Difference: {abs(factor_shape[0] - price_shape[0])}")
+            
+            # Suggest potential fixes
+            if factor_shape[0] > price_shape[0]:
+                print(f"💡 Suggested fix: Need more price data or reduce factor data")
+            else:
+                print(f"💡 Suggested fix: Current rear alignment should work")
+                
+        else:
+            print(f"✅ Length alignment successful: {factor_shape[0]} timesteps")
+            
+        # Validate feature dimensions
+        expected_factor_features = factor_shape[1] - 2  # Subtract position features
+        actual_state_features = self.state_dim - 2      # Subtract position features
+        
+        if expected_factor_features != actual_state_features:
+            print(f"⚠️  Feature dimension mismatch:")
+            print(f"   Expected: {expected_factor_features}")
+            print(f"   Actual: {actual_state_features}")
+        else:
+            print(f"✅ Feature dimension alignment successful: {expected_factor_features} features")
+            
+        # Check for NaN or infinite values
+        if th.isnan(self.factor_ary).any():
+            nan_count = th.isnan(self.factor_ary).sum().item()
+            print(f"⚠️  Found {nan_count} NaN values in factor_ary")
+            
+        if th.isnan(self.price_ary).any():
+            nan_count = th.isnan(self.price_ary).sum().item()
+            print(f"⚠️  Found {nan_count} NaN values in price_ary")
+            
+        # Data range validation
+        price_stats = {
+            'bid_min': self.price_ary[:, 0].min().item(),
+            'bid_max': self.price_ary[:, 0].max().item(),
+            'ask_min': self.price_ary[:, 1].min().item(),
+            'ask_max': self.price_ary[:, 1].max().item(),
+            'mid_min': self.price_ary[:, 2].min().item(),
+            'mid_max': self.price_ary[:, 2].max().item(),
+        }
+        
+        print(f"📈 Price data ranges:")
+        print(f"   Bid: [{price_stats['bid_min']:.2f}, {price_stats['bid_max']:.2f}]")
+        print(f"   Ask: [{price_stats['ask_min']:.2f}, {price_stats['ask_max']:.2f}]")
+        print(f"   Mid: [{price_stats['mid_min']:.2f}, {price_stats['mid_max']:.2f}]")
+        
+        # Validate bid-ask spread sanity
+        spreads = self.price_ary[:, 1] - self.price_ary[:, 0]  # ask - bid
+        negative_spreads = (spreads < 0).sum().item()
+        
+        if negative_spreads > 0:
+            print(f"❌ Found {negative_spreads} negative bid-ask spreads!")
+            print(f"   This indicates data quality issues")
+        else:
+            avg_spread = spreads.mean().item()
+            print(f"✅ Bid-ask spreads look healthy (avg: {avg_spread:.4f})")
+            
+        print("📊 Data alignment validation complete\n")
 
     def _reset(self, slippage=None, _if_random=True):
         self.slippage = slippage if isinstance(slippage, float) else self.slippage

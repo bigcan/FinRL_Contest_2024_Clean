@@ -52,13 +52,18 @@ class ComprehensiveBacktestRunner:
             # Output parameters
             'generate_visualizations': True,
             'generate_reports': True,
-            'output_formats': ['html', 'markdown', 'json'],
+            'output_formats': ['html', 'markdown', 'json', 'pdf'],
             'save_results': True,
             
             # Performance thresholds
             'min_sharpe': 0.5,
             'max_drawdown_threshold': 0.05,
             'min_win_rate': 0.5,
+            'min_validation_score': 70,
+            
+            # Benchmark data
+            'benchmark_file': None,  # Path to benchmark data file (CSV with dates and returns)
+            'benchmark_symbol': 'BTC',  # Symbol for benchmark
             
             # Technical parameters
             'gpu_id': 0,
@@ -68,11 +73,54 @@ class ComprehensiveBacktestRunner:
         
         if config_file and os.path.exists(config_file):
             import json
-            with open(config_file, 'r') as f:
-                file_config = json.load(f)
-            default_config.update(file_config)
+            try:
+                with open(config_file, 'r') as f:
+                    file_config = json.load(f)
+                default_config.update(file_config)
+                print(f"✓ Configuration loaded from {config_file}")
+            except json.JSONDecodeError as e:
+                print(f"⚠️ Error parsing JSON config file {config_file}: {e}")
+                print("Using default configuration")
+            except Exception as e:
+                print(f"⚠️ Error reading config file {config_file}: {e}")
+                print("Using default configuration")
             
         return default_config
+    
+    def _load_benchmark_data(self) -> np.ndarray:
+        """Load benchmark data for comparison"""
+        
+        benchmark_file = self.config.get('benchmark_file')
+        
+        if not benchmark_file or not os.path.exists(benchmark_file):
+            print("⚠️ No benchmark file specified or file not found")
+            return None
+        
+        try:
+            # Try to load benchmark data from CSV
+            benchmark_df = pd.read_csv(benchmark_file)
+            
+            # Assume the file has columns: date, price or return
+            if 'return' in benchmark_df.columns:
+                benchmark_returns = benchmark_df['return'].values
+            elif 'returns' in benchmark_df.columns:
+                benchmark_returns = benchmark_df['returns'].values
+            elif 'price' in benchmark_df.columns:
+                # Calculate returns from prices
+                prices = benchmark_df['price'].values
+                benchmark_returns = np.diff(prices) / prices[:-1]
+            else:
+                # Try to use the second column as values
+                price_col = benchmark_df.columns[1]
+                prices = benchmark_df[price_col].values
+                benchmark_returns = np.diff(prices) / prices[:-1]
+            
+            print(f"✓ Loaded benchmark data: {len(benchmark_returns)} return observations")
+            return benchmark_returns
+            
+        except Exception as e:
+            print(f"⚠️ Error loading benchmark data: {e}")
+            return None
     
     def _initialize_components(self):
         """Initialize all backtesting components"""
@@ -325,8 +373,13 @@ class ComprehensiveBacktestRunner:
         
         for result in all_results:
             if hasattr(result, 'equity_curve') and len(result.equity_curve) > 1:
-                returns = np.diff(result.equity_curve) / result.equity_curve[:-1]
-                all_returns.extend(returns)
+                denominator = result.equity_curve[:-1]
+                # Avoid division by zero
+                non_zero_mask = denominator != 0
+                if np.any(non_zero_mask):
+                    returns = np.zeros_like(denominator)
+                    returns[non_zero_mask] = np.diff(result.equity_curve)[non_zero_mask] / denominator[non_zero_mask]
+                    all_returns.extend(returns[non_zero_mask])  # Only add valid returns
         
         if not all_returns:
             print("⚠️ No returns available for statistical validation")
@@ -449,46 +502,101 @@ class ComprehensiveBacktestRunner:
         """Fallback simulation-based cost analysis"""
         
         simulated_costs = []
+        total_simulated_trades = 0
+        
+        # Determine minimum number of trades for robust analysis
+        min_trades_per_result = 30
+        max_total_trades = 1000  # Cap to prevent excessive computation
         
         for result in all_results:
-            # Simulate some trades for cost analysis
-            num_trades = getattr(result, 'num_trades', 20)
+            # Get trading frequency from backtest result
+            num_trades = getattr(result, 'num_trades', min_trades_per_result)
             
-            for i in range(min(num_trades, 10)):  # Limit for performance
-                # Simulate market data
-                market_data = {
-                    'bid': 50000 * np.random.uniform(0.999, 1.0),
-                    'ask': 50000 * np.random.uniform(1.0, 1.001),
-                    'volume': np.random.uniform(100, 1000),
-                    'volatility': np.random.uniform(0.01, 0.03)
-                }
-                
-                # Simulate execution
-                from transaction_cost_analyzer import OrderSide, OrderType
-                execution = cost_analyzer.calculate_execution_costs(
-                    OrderSide.BUY if np.random.random() > 0.5 else OrderSide.SELL,
-                    OrderType.MARKET,
-                    np.random.uniform(0.1, 1.0),
-                    50000,
-                    market_data
-                )
-                
-                cost_bps = cost_analyzer.calculate_cost_basis_points(execution)
-                simulated_costs.append(cost_bps)
+            # Simulate more trades based on result characteristics
+            if hasattr(result, 'total_return') and abs(result.total_return) > 0.1:
+                # More active strategies get more simulated trades
+                num_trades = max(num_trades, 50)
+            
+            trades_to_simulate = min(num_trades, 100)  # Per result limit
+            
+            for i in range(trades_to_simulate):
+                if total_simulated_trades >= max_total_trades:
+                    break
+                    
+                try:
+                    # More realistic market data simulation
+                    base_price = 50000 * np.random.uniform(0.8, 1.2)  # Price variation
+                    spread_bps = np.random.uniform(1, 8)  # 1-8 bps spread
+                    spread_amount = base_price * spread_bps / 10000
+                    
+                    market_data = {
+                        'bid': base_price - spread_amount/2,
+                        'ask': base_price + spread_amount/2,
+                        'volume': np.random.uniform(500, 5000),  # Larger volume range
+                        'volatility': np.random.uniform(0.01, 0.05),
+                        'mid': base_price
+                    }
+                    
+                    # Simulate execution with varying order characteristics
+                    from transaction_cost_analyzer import OrderSide, OrderType
+                    
+                    # Realistic order size distribution (log-normal)
+                    order_size = np.random.lognormal(mean=0, sigma=0.5)
+                    order_size = np.clip(order_size, 0.01, 10.0)  # Reasonable bounds
+                    
+                    execution = cost_analyzer.calculate_execution_costs(
+                        order_side=OrderSide.BUY if np.random.random() > 0.5 else OrderSide.SELL,
+                        order_type=OrderType.MARKET if np.random.random() > 0.3 else OrderType.LIMIT,
+                        quantity=order_size,
+                        target_price=base_price,
+                        market_data=market_data,
+                        order_id=f"sim_trade_{total_simulated_trades}"
+                    )
+                    
+                    cost_bps = cost_analyzer.calculate_cost_basis_points(execution)
+                    if not np.isnan(cost_bps) and cost_bps < 1000:  # Sanity check
+                        simulated_costs.append(cost_bps)
+                        total_simulated_trades += 1
+                        
+                except Exception as e:
+                    print(f"⚠️ Error in cost simulation: {e}")
+                    continue
+            
+            if total_simulated_trades >= max_total_trades:
+                break
         
-        # Analyze costs
+        # Analyze costs with improved statistics
         if simulated_costs:
-            avg_cost = np.mean(simulated_costs)
+            costs_array = np.array(simulated_costs)
+            
+            # Calculate comprehensive cost statistics
+            cost_stats = {
+                'mean': np.mean(costs_array),
+                'median': np.median(costs_array),
+                'std': np.std(costs_array),
+                'min': np.min(costs_array),
+                'max': np.max(costs_array),
+                'p25': np.percentile(costs_array, 25),
+                'p75': np.percentile(costs_array, 75),
+                'p95': np.percentile(costs_array, 95)
+            }
+            
             print(f"✓ Transaction cost analysis: {len(simulated_costs)} simulated trades")
-            print(f"✓ Average cost: {avg_cost:.1f} basis points")
+            print(f"✓ Average cost: {cost_stats['mean']:.1f} basis points")
+            print(f"✓ Median cost: {cost_stats['median']:.1f} basis points")
+            print(f"✓ 95th percentile: {cost_stats['p95']:.1f} basis points")
             
             # Generate cost analysis
             analysis = cost_analyzer.analyze_execution_quality()
             
             return {
+                'simulated': True,
                 'simulated_costs': simulated_costs,
+                'cost_statistics': cost_stats,
                 'analysis': analysis,
-                'average_cost_bps': avg_cost,
+                'average_cost_bps': cost_stats['mean'],
+                'median_cost_bps': cost_stats['median'],
+                'total_simulated_trades': len(simulated_costs),
                 'cost_report': cost_analyzer.generate_cost_analysis_report()
             }
         else:
@@ -507,8 +615,13 @@ class ComprehensiveBacktestRunner:
         
         for result in all_results:
             if hasattr(result, 'equity_curve') and len(result.equity_curve) > 1:
-                returns = np.diff(result.equity_curve) / result.equity_curve[:-1]
-                all_returns.extend(returns)
+                denominator = result.equity_curve[:-1]
+                # Avoid division by zero
+                non_zero_mask = denominator != 0
+                if np.any(non_zero_mask):
+                    returns = np.zeros_like(denominator)
+                    returns[non_zero_mask] = np.diff(result.equity_curve)[non_zero_mask] / denominator[non_zero_mask]
+                    all_returns.extend(returns[non_zero_mask])  # Only add valid returns
                 all_prices.extend(result.equity_curve)
         
         if not all_returns:
@@ -536,26 +649,33 @@ class ComprehensiveBacktestRunner:
         visualizer = self.components['visualizer']
         all_results = backtest_results['all_results']
         
-        print("Generating comprehensive dashboard...")
+        # Create visualization output directory
+        viz_dir = "results/visualizations"
+        os.makedirs(viz_dir, exist_ok=True)
+        
+        print(f"Generating comprehensive dashboard in {viz_dir}...")
         
         try:
             # Generate static dashboard
+            static_path = os.path.join(viz_dir, "comprehensive_backtest_dashboard.png")
             fig = visualizer.create_comprehensive_dashboard(
                 all_results,
-                save_path="comprehensive_backtest_dashboard.png"
+                save_path=static_path
             )
             
-            print("✓ Static dashboard saved to 'comprehensive_backtest_dashboard.png'")
+            print(f"✓ Static dashboard saved to '{static_path}'")
             
             # Generate interactive dashboard
+            interactive_path = os.path.join(viz_dir, "interactive_backtest_dashboard.html")
             interactive_fig = create_interactive_dashboard(all_results)
-            interactive_fig.write_html("interactive_backtest_dashboard.html")
+            interactive_fig.write_html(interactive_path)
             
-            print("✓ Interactive dashboard saved to 'interactive_backtest_dashboard.html'")
+            print(f"✓ Interactive dashboard saved to '{interactive_path}'")
             
             return {
-                'static_dashboard': "comprehensive_backtest_dashboard.png",
-                'interactive_dashboard': "interactive_backtest_dashboard.html"
+                'static_dashboard': static_path,
+                'interactive_dashboard': interactive_path,
+                'output_directory': viz_dir
             }
             
         except Exception as e:
@@ -572,7 +692,7 @@ class ComprehensiveBacktestRunner:
         
         try:
             # Get additional data for reports
-            benchmark_returns = None  # Could be loaded if available
+            benchmark_returns = self._load_benchmark_data()
             market_conditions = self.results.get('market_analysis', {}).get('market_conditions')
             transaction_costs = self.results.get('cost_analysis', {}).get('simulated_costs')
             
@@ -629,17 +749,21 @@ class ComprehensiveBacktestRunner:
                 'reliability': validation.reliability_assessment
             }
         
-        # Generate recommendations
+        # Generate recommendations using configurable thresholds
         recommendations = []
         
-        if summary.get('key_metrics', {}).get('sharpe_ratio', 0) < 0.5:
-            recommendations.append("Improve risk-adjusted returns through better signal generation")
+        min_sharpe_threshold = self.config.get('min_sharpe', 0.5)
+        max_drawdown_threshold = self.config.get('max_drawdown_threshold', 0.05)
+        min_validation_score = self.config.get('min_validation_score', 70)
         
-        if abs(summary.get('key_metrics', {}).get('max_drawdown', 0)) > 0.1:
-            recommendations.append("Implement stronger risk controls to reduce drawdowns")
+        if summary.get('key_metrics', {}).get('sharpe_ratio', 0) < min_sharpe_threshold:
+            recommendations.append(f"Improve risk-adjusted returns through better signal generation (current < {min_sharpe_threshold})")
         
-        if summary.get('statistical_validation', {}).get('overall_score', 0) < 70:
-            recommendations.append("Address statistical validation issues before deployment")
+        if abs(summary.get('key_metrics', {}).get('max_drawdown', 0)) > max_drawdown_threshold:
+            recommendations.append(f"Implement stronger risk controls to reduce drawdowns (current > {max_drawdown_threshold:.1%})")
+        
+        if summary.get('statistical_validation', {}).get('overall_score', 0) < min_validation_score:
+            recommendations.append(f"Address statistical validation issues before deployment (current < {min_validation_score}%)")
         
         summary['recommendations'] = recommendations
         
@@ -647,6 +771,58 @@ class ComprehensiveBacktestRunner:
         
         return summary
     
+    def _serialize_complex_object(self, obj):
+        """Convert complex objects to JSON-serializable format"""
+        
+        if hasattr(obj, '__dict__'):
+            # For objects with attributes, extract key information
+            result = {'_type': type(obj).__name__}
+            
+            for key, value in obj.__dict__.items():
+                if isinstance(value, (str, int, float, bool, type(None))):
+                    result[key] = value
+                elif isinstance(value, (list, tuple)):
+                    result[key] = [self._serialize_complex_object(item) for item in value[:10]]  # Limit for size
+                elif isinstance(value, dict):
+                    result[key] = {k: self._serialize_complex_object(v) for k, v in list(value.items())[:10]}
+                elif isinstance(value, np.ndarray):
+                    if value.size < 100:  # Small arrays only
+                        result[key] = value.tolist()
+                    else:
+                        result[key] = {
+                            '_type': 'numpy_array',
+                            'shape': value.shape,
+                            'dtype': str(value.dtype),
+                            'size': value.size,
+                            'sample': value.flatten()[:10].tolist() if value.size > 0 else []
+                        }
+                elif hasattr(value, '__dict__'):
+                    result[key] = self._serialize_complex_object(value)
+                else:
+                    result[key] = str(value)
+                    
+            return result
+            
+        elif isinstance(obj, (list, tuple)):
+            return [self._serialize_complex_object(item) for item in obj[:10]]
+        elif isinstance(obj, dict):
+            return {k: self._serialize_complex_object(v) for k, v in list(obj.items())[:10]}
+        elif isinstance(obj, np.ndarray):
+            if obj.size < 100:
+                return obj.tolist()
+            else:
+                return {
+                    '_type': 'numpy_array',
+                    'shape': obj.shape,
+                    'dtype': str(obj.dtype),
+                    'size': obj.size,
+                    'sample': obj.flatten()[:10].tolist() if obj.size > 0 else []
+                }
+        elif isinstance(obj, (str, int, float, bool, type(None))):
+            return obj
+        else:
+            return str(obj)
+            
     def _save_results(self):
         """Save all results to files"""
         
@@ -659,22 +835,14 @@ class ComprehensiveBacktestRunner:
             # Save as JSON (for human readable data)
             json_filename = f"backtest_results_{timestamp}.json"
             
-            # Create JSON-serializable version
+            # Create comprehensive JSON-serializable version
             json_results = {}
             for key, value in self.results.items():
-                if key == 'backtest_results':
-                    # Summarize backtest results
-                    json_results[key] = {
-                        'num_standard': 1,
-                        'num_walk_forward': len(value.get('walk_forward', [])),
-                        'num_monte_carlo': len(value.get('monte_carlo', [])),
-                        'num_regimes': len(value.get('by_regime', {})),
-                        'summary': value.get('summary', {})
-                    }
-                elif key in ['advanced_metrics', 'summary']:
-                    json_results[key] = value
-                else:
-                    json_results[key] = f"Saved separately - {type(value).__name__}"
+                try:
+                    json_results[key] = self._serialize_complex_object(value)
+                except Exception as e:
+                    print(f"⚠️ Error serializing {key}: {e}")
+                    json_results[key] = f"Serialization error - {type(value).__name__}"
             
             with open(json_filename, 'w') as f:
                 json.dump(json_results, f, indent=2, default=str)
@@ -709,6 +877,8 @@ def main():
     parser.add_argument('--output-formats', nargs='+', default=['html', 'markdown'],
                        choices=['html', 'markdown', 'json', 'pdf'],
                        help='Report output formats')
+    parser.add_argument('--benchmark-file', type=str,
+                       help='Path to benchmark data file (CSV)')
     parser.add_argument('--verbose', action='store_true', default=True,
                        help='Verbose output')
     
@@ -727,6 +897,7 @@ def main():
         'generate_visualizations': not args.no_visualizations,
         'generate_reports': not args.no_reports,
         'output_formats': args.output_formats,
+        'benchmark_file': args.benchmark_file,
         'verbose': args.verbose
     }
     

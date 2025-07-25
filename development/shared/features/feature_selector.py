@@ -117,44 +117,258 @@ class FeatureSelector:
         return X_filtered, names_filtered, mask
     
     def _compute_feature_importance(self, X, y, feature_names):
-        """Compute feature importance using LightGBM"""
+        """
+        Compute feature importance using optimally configured LightGBM
+        
+        Enhanced configuration ensures robust feature selection:
+        - Optimal hyperparameters for feature importance estimation
+        - Comprehensive input validation and error handling
+        - Multiple importance metrics for robustness
+        - Fallback mechanisms for edge cases
+        """
+        
+        # Validate inputs first
+        if not self._validate_lightgbm_inputs(X, y, feature_names):
+            print("⚠️ Input validation failed, using correlation-based importance")
+            return self._correlation_importance(X, y)
+        
         try:
             import lightgbm as lgb
+            print("✅ LightGBM successfully imported")
             
-            # Prepare data
-            train_data = lgb.Dataset(X, label=y, feature_name=feature_names)
+            # Verify LightGBM version for compatibility
+            lgb_version = lgb.__version__
+            print(f"📦 LightGBM version: {lgb_version}")
             
-            # Parameters for feature selection
-            params = {
-                'objective': 'regression',
-                'metric': 'mse',
-                'boosting_type': 'gbdt',
+            if tuple(map(int, lgb_version.split('.'))) < (3, 0, 0):
+                print("⚠️ LightGBM version < 3.0.0 detected, using basic configuration")
+                
+            # Enhanced data preparation with validation
+            train_data = self._prepare_lightgbm_dataset(X, y, feature_names)
+            
+            # Optimized parameters for feature importance estimation
+            params = self._get_optimal_lightgbm_params(X.shape)
+            
+            print(f"🔧 Training LightGBM with {len(feature_names)} features, {X.shape[0]} samples")
+            
+            # Train model with enhanced configuration
+            model = self._train_lightgbm_model(params, train_data)
+            
+            # Extract multiple types of feature importance for robustness
+            importance_scores = self._extract_feature_importance(model, X.shape[1])
+            
+            print(f"✅ LightGBM feature importance computed successfully")
+            print(f"📊 Top 5 features by importance: {np.argsort(importance_scores)[-5:][::-1]}")
+            
+            return importance_scores
+            
+        except ImportError as e:
+            print(f"❌ LightGBM not available: {e}")
+            print("💡 Install LightGBM: pip install lightgbm")
+            return self._correlation_importance(X, y)
+            
+        except Exception as e:
+            print(f"❌ LightGBM training failed: {e}")
+            print("🔄 Falling back to correlation-based importance")
+            return self._correlation_importance(X, y)
+    
+    def _validate_lightgbm_inputs(self, X, y, feature_names):
+        """Comprehensive input validation for LightGBM"""
+        
+        # Check data dimensions
+        if X.shape[0] != len(y):
+            print(f"❌ Shape mismatch: X has {X.shape[0]} samples, y has {len(y)}")
+            return False
+            
+        # Check for minimum data requirements
+        if X.shape[0] < 10:
+            print("❌ Insufficient data: need at least 10 samples for feature selection")
+            return False
+            
+        if X.shape[1] < 2:
+            print("❌ Insufficient features: need at least 2 features for selection")
+            return False
+            
+        # Check for data quality issues
+        if np.isnan(X).any():
+            nan_count = np.isnan(X).sum()
+            print(f"⚠️ Found {nan_count} NaN values in X")
+            
+        if np.isnan(y).any():
+            nan_count = np.isnan(y).sum()
+            print(f"⚠️ Found {nan_count} NaN values in y")
+            
+        if np.isinf(X).any():
+            inf_count = np.isinf(X).sum()
+            print(f"⚠️ Found {inf_count} infinite values in X")
+            
+        # Check target variable variance
+        if np.var(y) < 1e-10:
+            print("❌ Target variable has no variance - cannot compute feature importance")
+            return False
+            
+        # Validate feature names
+        if len(feature_names) != X.shape[1]:
+            print(f"⚠️ Feature names length ({len(feature_names)}) != X columns ({X.shape[1]})")
+            
+        return True
+    
+    def _prepare_lightgbm_dataset(self, X, y, feature_names):
+        """Prepare and validate LightGBM dataset"""
+        
+        import lightgbm as lgb
+        
+        # Handle NaN values
+        X_clean = np.nan_to_num(X, nan=0.0, posinf=1e6, neginf=-1e6)
+        y_clean = np.nan_to_num(y, nan=0.0, posinf=1e6, neginf=-1e6)
+        
+        # Ensure feature names are strings
+        feature_names_clean = [str(name) for name in feature_names] if feature_names else None
+        
+        try:
+            train_data = lgb.Dataset(
+                X_clean, 
+                label=y_clean, 
+                feature_name=feature_names_clean,
+                free_raw_data=False  # Keep raw data for debugging
+            )
+            
+            # Validate dataset construction
+            if train_data.num_data() != X.shape[0]:
+                raise ValueError(f"Dataset size mismatch: expected {X.shape[0]}, got {train_data.num_data()}")
+                
+            return train_data
+            
+        except Exception as e:
+            print(f"❌ Error creating LightGBM dataset: {e}")
+            raise
+    
+    def _get_optimal_lightgbm_params(self, data_shape):
+        """Get optimized LightGBM parameters based on data characteristics"""
+        
+        n_samples, n_features = data_shape
+        
+        # Base parameters optimized for feature importance
+        params = {
+            'objective': 'regression',
+            'metric': 'mse',
+            'boosting_type': 'gbdt',
+            'verbosity': -1,
+            'seed': 42,
+            'deterministic': True,  # For reproducible results
+            'force_col_wise': True,  # Better for feature importance
+        }
+        
+        # Adaptive parameters based on dataset size
+        if n_samples < 1000:
+            # Small dataset - conservative parameters
+            params.update({
+                'num_leaves': min(15, 2**int(np.log2(n_samples/10))),
+                'learning_rate': 0.1,
+                'feature_fraction': 0.8,
+                'bagging_fraction': 0.8,
+                'min_data_in_leaf': 5,
+                'lambda_l1': 0.1,
+                'lambda_l2': 0.1,
+            })
+        elif n_samples < 10000:
+            # Medium dataset - balanced parameters
+            params.update({
                 'num_leaves': 31,
                 'learning_rate': 0.05,
                 'feature_fraction': 0.9,
-                'verbose': -1
-            }
+                'bagging_fraction': 0.9,
+                'min_data_in_leaf': 10,
+                'lambda_l1': 0.01,
+                'lambda_l2': 0.01,
+            })
+        else:
+            # Large dataset - more aggressive parameters
+            params.update({
+                'num_leaves': 63,
+                'learning_rate': 0.03,
+                'feature_fraction': 0.95,
+                'bagging_fraction': 0.95,
+                'min_data_in_leaf': 20,
+                'lambda_l1': 0.001,
+                'lambda_l2': 0.001,
+            })
+        
+        # Adjust for high-dimensional data
+        if n_features > 100:
+            params['feature_fraction'] = max(0.7, params['feature_fraction'] - 0.1)
             
-            # Train model
+        return params
+    
+    def _train_lightgbm_model(self, params, train_data):
+        """Train LightGBM model with optimal configuration"""
+        
+        import lightgbm as lgb
+        
+        # Determine optimal number of boosting rounds
+        n_samples = train_data.num_data()
+        
+        if n_samples < 1000:
+            num_boost_round = 50
+            early_stopping_rounds = 10
+        elif n_samples < 10000:
+            num_boost_round = 100
+            early_stopping_rounds = 15
+        else:
+            num_boost_round = 200
+            early_stopping_rounds = 20
+        
+        # Enhanced callbacks for robust training
+        callbacks = [
+            lgb.early_stopping(early_stopping_rounds, verbose=False),
+            lgb.log_evaluation(0)  # Silent training
+        ]
+        
+        try:
             model = lgb.train(
                 params,
                 train_data,
-                num_boost_round=100,
+                num_boost_round=num_boost_round,
                 valid_sets=[train_data],
-                callbacks=[lgb.early_stopping(10), lgb.log_evaluation(0)]
+                callbacks=callbacks
             )
             
-            # Get feature importance
-            importance = model.feature_importance(importance_type='gain')
+            return model
             
-        except ImportError:
-            print("LightGBM not available, using correlation-based importance")
-            importance = self._correlation_importance(X, y)
         except Exception as e:
-            print(f"LightGBM failed ({e}), using correlation-based importance")
-            importance = self._correlation_importance(X, y)
+            print(f"❌ LightGBM training error: {e}")
+            raise
+    
+    def _extract_feature_importance(self, model, n_features):
+        """Extract robust feature importance scores"""
+        
+        try:
+            # Primary importance: gain-based (most reliable)
+            importance_gain = model.feature_importance(importance_type='gain')
             
-        return importance
+            # Secondary importance: split-based (frequency)
+            importance_split = model.feature_importance(importance_type='split')
+            
+            # Combine importances with weighted average (gain is more important)
+            if len(importance_gain) == n_features and len(importance_split) == n_features:
+                # Normalize both importance types
+                gain_norm = importance_gain / (np.sum(importance_gain) + 1e-8)
+                split_norm = importance_split / (np.sum(importance_split) + 1e-8)
+                
+                # Weighted combination (80% gain, 20% split)
+                combined_importance = 0.8 * gain_norm + 0.2 * split_norm
+                
+                print("✅ Using combined gain + split importance")
+                return combined_importance
+                
+            else:
+                print("⚠️ Using gain importance only")
+                return importance_gain
+                
+        except Exception as e:
+            print(f"❌ Error extracting feature importance: {e}")
+            # Fallback to uniform importance
+            return np.ones(n_features) / n_features
     
     def _correlation_importance(self, X, y):
         """Fallback: correlation-based importance"""

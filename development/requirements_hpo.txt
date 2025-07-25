@@ -1,0 +1,38 @@
+# Hyperparameter Optimization Dependencies for FinRL Contest 2024
+# Add these to your existing requirements.txt
+
+# Core HPO Framework
+optuna==3.4.0
+optuna-dashboard==0.15.1
+
+# Storage and Database
+sqlalchemy==2.0.23
+alembic==1.12.1
+
+# Enhanced Plotting and Analysis
+plotly==5.17.0
+kaleido==0.2.1
+
+# Scientific Computing (versions that work well with Optuna)
+scikit-learn>=1.3.0
+scipy>=1.11.0
+
+# Logging and Progress Tracking
+tqdm>=4.65.0
+
+# Configuration Management
+pyyaml>=6.0
+python-dotenv>=1.0.0
+
+# For parallel processing
+joblib>=1.3.0
+
+# Optional: MLflow integration for experiment tracking
+# mlflow>=2.8.0
+
+# Optional: Weights & Biases integration
+# wandb>=0.16.0
+
+# Optional: Ray Tune alternative HPO framework
+# ray[tune]>=2.8.0
+# hyperopt>=0.2.7

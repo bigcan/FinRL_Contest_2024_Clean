@@ -326,20 +326,114 @@ class LOBFeatures:
         return alpha
     
     def _rolling_calculation(self, func, data, window):
-        """Apply rolling calculation function"""
-        if isinstance(data, pd.DataFrame):
-            results = []
-            for i in range(len(data)):
-                start_idx = max(0, i - window + 1)
-                window_data = data.iloc[start_idx:i+1]
-                try:
-                    result = func(window_data)
-                except:
+        """
+        Optimized rolling calculation function for LOB features
+        
+        Performance improvements for large datasets:
+        - Vectorized operations for common statistical functions
+        - Efficient DataFrame column-wise processing
+        - Fallback support for complex custom functions
+        """
+        
+        # Handle edge cases
+        if len(data) == 0:
+            return np.array([])
+        if window <= 0:
+            window = 1
+        if window > len(data):
+            window = len(data)
+        
+        try:
+            if isinstance(data, pd.DataFrame):
+                # For DataFrames, optimize common operations
+                func_name = getattr(func, '__name__', str(func))
+                
+                # Check if it's a simple aggregation function
+                if func_name in ['mean', 'std', 'min', 'max', 'sum', 'var']:
+                    # Use pandas rolling aggregation - much faster
+                    rolling_obj = data.rolling(window=window, min_periods=1)
+                    
+                    if func_name == 'mean' or func == np.mean:
+                        results = rolling_obj.mean().iloc[:, 0].values  # Take first column result
+                    elif func_name == 'std' or func == np.std:
+                        results = rolling_obj.std().iloc[:, 0].values
+                    elif func_name == 'min' or func == np.min:
+                        results = rolling_obj.min().iloc[:, 0].values
+                    elif func_name == 'max' or func == np.max:
+                        results = rolling_obj.max().iloc[:, 0].values
+                    elif func_name == 'sum' or func == np.sum:
+                        results = rolling_obj.sum().iloc[:, 0].values
+                    elif func_name == 'var' or func == np.var:
+                        results = rolling_obj.var().iloc[:, 0].values
+                    else:
+                        # Fallback to original implementation
+                        return self._rolling_calculation_fallback_df(func, data, window)
+                else:
+                    # For complex functions, use optimized apply
+                    rolling_obj = data.rolling(window=window, min_periods=1)
+                    results = rolling_obj.apply(func, raw=False).iloc[:, 0].values
+                
+                # Handle NaN/inf values
+                nan_mask = np.isnan(results) | np.isinf(results)
+                if np.any(nan_mask):
+                    results[nan_mask] = 0.0
+                    
+                return results
+                
+            else:
+                # For Series, use optimized pandas rolling (already efficient)
+                func_name = getattr(func, '__name__', str(func))
+                
+                if func_name == 'mean' or func == np.mean:
+                    results = data.rolling(window, min_periods=1).mean()
+                elif func_name == 'std' or func == np.std:
+                    results = data.rolling(window, min_periods=1).std()
+                elif func_name == 'min' or func == np.min:
+                    results = data.rolling(window, min_periods=1).min()
+                elif func_name == 'max' or func == np.max:
+                    results = data.rolling(window, min_periods=1).max()
+                elif func_name == 'sum' or func == np.sum:
+                    results = data.rolling(window, min_periods=1).sum()
+                elif func_name == 'var' or func == np.var:
+                    results = data.rolling(window, min_periods=1).var()
+                else:
+                    results = data.rolling(window, min_periods=1).apply(func, raw=True)
+                
+                results = results.values
+                
+                # Handle NaN/inf values
+                nan_mask = np.isnan(results) | np.isinf(results)
+                if np.any(nan_mask):
+                    results[nan_mask] = 0.0
+                    
+                return results
+                
+        except Exception as e:
+            # Fallback to original implementation for edge cases
+            print(f"⚠️ LOB rolling calculation fallback used: {e}")
+            if isinstance(data, pd.DataFrame):
+                return self._rolling_calculation_fallback_df(func, data, window)
+            else:
+                return data.rolling(window, min_periods=1).apply(func, raw=False).values
+    
+    def _rolling_calculation_fallback_df(self, func, data, window):
+        """
+        Fallback implementation for DataFrame rolling calculations
+        
+        This is the original loop-based implementation for complex functions
+        """
+        results = []
+        for i in range(len(data)):
+            start_idx = max(0, i - window + 1)
+            window_data = data.iloc[start_idx:i+1]
+            try:
+                result = func(window_data)
+                if np.isnan(result) or np.isinf(result):
                     result = 0.0
-                results.append(result)
-            return np.array(results)
-        else:
-            return data.rolling(window, min_periods=1).apply(func, raw=False).values
+            except:
+                result = 0.0
+            results.append(result)
+        return np.array(results)
     
     def _compute_microprice(self, bid_prices, ask_prices, bid_volumes, ask_volumes):
         """
