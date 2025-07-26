@@ -19,7 +19,7 @@ from erl_config import Config, build_env
 from erl_replay_buffer import ReplayBuffer
 from erl_evaluator import Evaluator
 from trade_simulator import TradeSimulator, EvalTradeSimulator
-from erl_agent import AgentD3QN, AgentDoubleDQN, AgentTwinD3QN
+from erl_agent import AgentD3QN, AgentDoubleDQN, AgentPrioritizedDQN
 from collections import Counter
 
 from metrics import *
@@ -654,6 +654,7 @@ def run(save_path, agent_list, log_rules=False, config_dict=None):
         "slippage": config['slippage'],
         "num_sims": config['num_sims'],
         "step_gap": config['step_gap'],
+        "data_length": config.get('data_length', None),  # Add data_length parameter
     }
     
     args = Config(agent_class=AgentD3QN, env_class=TradeSimulator, env_args=env_args)
@@ -723,7 +724,7 @@ if __name__ == "__main__":
     
     run(
         args.save_path,
-        [AgentD3QN, AgentDoubleDQN, AgentDoubleDQN, AgentTwinD3QN],
+        [AgentD3QN, AgentDoubleDQN, AgentPrioritizedDQN],
         log_rules=args.log_rules,
         config_dict=config_dict
     )

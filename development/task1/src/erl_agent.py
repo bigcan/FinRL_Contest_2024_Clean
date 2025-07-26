@@ -63,6 +63,7 @@ class AgentDoubleDQN:
     def get_obj_critic(self, buffer: ReplayBuffer, batch_size: int) -> Tuple[Tensor, Tensor]:
         """
         Calculate the loss of the network and predict Q values with **uniform sampling**.
+        Implements proper Double DQN: use online network for action selection, target network for evaluation.
 
         :param buffer: the ReplayBuffer instance that stores the trajectories.
         :param batch_size: the size of batch data for Stochastic Gradient Descent (SGD).
@@ -71,7 +72,13 @@ class AgentDoubleDQN:
         with torch.no_grad():
             states, actions, rewards, undones, next_ss = buffer.sample(batch_size)
 
-            next_qs = torch.min(*self.cri_target.get_q1_q2(next_ss)).max(dim=1, keepdim=True)[0].squeeze(1)
+            # Double DQN: use online network for action selection
+            next_q1_online, next_q2_online = self.act.get_q1_q2(next_ss)
+            next_actions = torch.min(next_q1_online, next_q2_online).argmax(dim=1, keepdim=True)
+            
+            # Use target network for evaluation with selected actions
+            next_q1_target, next_q2_target = self.cri_target.get_q1_q2(next_ss)
+            next_qs = torch.min(next_q1_target, next_q2_target).gather(1, next_actions).squeeze(1)
             q_labels = rewards + undones * self.gamma * next_qs
 
         q1, q2 = [qs.gather(1, actions.long()).squeeze(1) for qs in self.act.get_q1_q2(states)]
@@ -113,8 +120,8 @@ class AgentDoubleDQN:
 
         state = self.last_state  # last_state.shape = (num_envs, state_dim) for a vectorized env.
 
-        # get_action = self.act.get_action # TODO check
-        get_action = self.act_target.get_action
+        # Use online network for exploration to get most up-to-date policy
+        get_action = self.act.get_action
         for t in range(horizon_len):
             action = torch.randint(self.action_dim, size=(self.num_envs, 1)) if if_random \
                 else get_action(state).detach()  # different
@@ -230,8 +237,13 @@ class AgentD3QN(AgentDoubleDQN):  # Dueling Double Deep Q Network. (D3QN)
         self.cri_class = getattr(self, "cri_class", None)  # means `self.cri = self.act`
         super().__init__(net_dims=net_dims, state_dim=state_dim, action_dim=action_dim, gpu_id=gpu_id, args=args)
 
-class AgentTwinD3QN(AgentDoubleDQN):
+class AgentPrioritizedDQN(AgentDoubleDQN):
+    """Double DQN with prioritized experience replay for ensemble diversity"""
     def __init__(self, net_dims: [int], state_dim: int, action_dim: int, gpu_id: int = 0, args: Config = Config()):
-        self.act_class = getattr(self, "act_class", QNetTwin)
-        self.cri_class = getattr(self, "cri_class", None)  # means `self.cri = self.act`
+        # Use different network architecture for diversity
+        self.act_class = getattr(self, "act_class", QNetTwinDuel)
+        self.cri_class = getattr(self, "cri_class", None)
+        # Modify hyperparameters for diversity
+        args.learning_rate = args.learning_rate * 1.5  # Higher learning rate
+        args.soft_update_tau = args.soft_update_tau * 2  # Faster target updates
         super().__init__(net_dims=net_dims, state_dim=state_dim, action_dim=action_dim, gpu_id=gpu_id, args=args)

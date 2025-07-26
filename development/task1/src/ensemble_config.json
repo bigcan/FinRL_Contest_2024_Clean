@@ -1,0 +1,42 @@
+{
+    "ensemble": {
+        "gpu_id": 0,
+        "num_sims": 64,
+        "num_ignore_step": 60,
+        "max_position": 1,
+        "step_gap": 2,
+        "slippage": 7e-7,
+        "starting_cash": 1000000,
+        "data_length": 4800
+    },
+    "training": {
+        "net_dims": [128, 128, 128],
+        "gamma": 0.995,
+        "explore_rate": 0.005,
+        "state_value_tau": 0.01,
+        "soft_update_tau": 2e-6,
+        "learning_rate": 2e-6,
+        "batch_size": 512,
+        "break_step": 100,
+        "buffer_size_multiplier": 8,
+        "repeat_times": 2,
+        "horizon_len_multiplier": 2,
+        "eval_per_step_multiplier": 1,
+        "num_workers": 1,
+        "save_gap": 8
+    },
+    "data_paths": {
+        "csv_path": "data/BTC_1sec.csv",
+        "predict_path": "data/BTC_1sec_predict.npy",
+        "enhanced_features": {
+            "enhanced_v3": "data/BTC_1sec_predict_enhanced_v3.npy",
+            "optimized": "data/BTC_1sec_predict_optimized.npy",
+            "enhanced": "data/BTC_1sec_predict_enhanced.npy"
+        }
+    },
+    "agents": [
+        "AgentD3QN",
+        "AgentDoubleDQN", 
+        "AgentPrioritizedDQN"
+    ]
+}
