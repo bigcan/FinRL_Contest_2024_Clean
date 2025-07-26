@@ -125,8 +125,6 @@ class TradeSimulator:
         self.seq_len = 3600
         self.full_seq_len = self.price_ary.shape[0]
         
-        # Enhanced validation with detailed error reporting
-        self._validate_data_alignment()
         
         assert self.price_ary.shape[0] == self.factor_ary.shape[0]
 
@@ -153,6 +151,9 @@ class TradeSimulator:
         self.if_discrete = True
         self.max_step = (self.seq_len - num_ignore_step) // step_gap
         self.target_return = +np.inf
+        
+        # Enhanced validation with detailed error reporting - moved after state_dim is set
+        self._validate_data_alignment()
 
         """stop-loss"""
         self.best_price = th.zeros((num_sims,), dtype=th.float32, device=device)
@@ -445,6 +446,22 @@ class TradeSimulator:
 
 
 class EvalTradeSimulator(TradeSimulator):
+    def __init__(self, eval_split=0.8, **kwargs):
+        """
+        Evaluation simulator that uses the last portion of data for out-of-sample testing.
+        
+        Args:
+            eval_split: float, proportion of data to use for training (0.8 means use last 20% for eval)
+            **kwargs: arguments passed to parent TradeSimulator
+        """
+        super().__init__(**kwargs)
+        
+        # Use the last portion of data for evaluation (out-of-sample)
+        split_idx = int(len(self.factor_ary) * eval_split)
+        self.factor_ary = self.factor_ary[split_idx:]
+        self.price_ary = self.price_ary[split_idx:]
+        
+        print(f"EvalTradeSimulator: Using last {len(self.factor_ary)} samples for evaluation (out-of-sample)")
 
     def reset(self, slippage=None, date_strs=()):
         self.stop_loss_thresh = 1e-4
