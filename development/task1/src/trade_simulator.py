@@ -33,9 +33,24 @@ class TradeSimulator:
         args = ConfigData()
 
         """load data"""
-        # Try to load optimized features first (Phase 2)
+        # Priority loading: enhanced_v3 > optimized > enhanced > original
+        enhanced_v3_path = args.predict_ary_path.replace('.npy', '_enhanced_v3.npy')
         optimized_path = args.predict_ary_path.replace('.npy', '_optimized.npy')
-        if os.path.exists(optimized_path):
+        enhanced_path = args.predict_ary_path.replace('.npy', '_enhanced.npy')
+        
+        if os.path.exists(enhanced_v3_path):
+            print(f"Loading enhanced features v3 from {enhanced_v3_path}")
+            self.factor_ary = np.load(enhanced_v3_path)
+            
+            # Load metadata for enhanced v3 features
+            metadata_path = enhanced_v3_path.replace('.npy', '_metadata.npy')
+            if os.path.exists(metadata_path):
+                metadata = np.load(metadata_path, allow_pickle=True).item()
+                self.feature_names = metadata.get('feature_names', [])
+                print(f"Enhanced v3 features loaded: {len(self.feature_names)} features")
+            else:
+                self.feature_names = []
+        elif os.path.exists(optimized_path):
             print(f"Loading optimized features from {optimized_path}")
             self.factor_ary = np.load(optimized_path)
             
@@ -47,25 +62,22 @@ class TradeSimulator:
                 print(f"Optimized features loaded: {len(self.feature_names)} features")
             else:
                 self.feature_names = []
-        else:
-            # Fallback to enhanced features
-            enhanced_path = args.predict_ary_path.replace('.npy', '_enhanced.npy')
-            if os.path.exists(enhanced_path):
-                print(f"Loading enhanced features from {enhanced_path}")
-                self.factor_ary = np.load(enhanced_path)
-                
-                # Load metadata for enhanced features
-                metadata_path = enhanced_path.replace('.npy', '_metadata.npy')
-                if os.path.exists(metadata_path):
-                    metadata = np.load(metadata_path, allow_pickle=True).item()
-                    self.feature_names = metadata.get('feature_names', [])
-                    print(f"Enhanced features loaded: {len(self.feature_names)} features")
-                else:
-                    self.feature_names = []
+        elif os.path.exists(enhanced_path):
+            print(f"Loading enhanced features from {enhanced_path}")
+            self.factor_ary = np.load(enhanced_path)
+            
+            # Load metadata for enhanced features
+            metadata_path = enhanced_path.replace('.npy', '_metadata.npy')
+            if os.path.exists(metadata_path):
+                metadata = np.load(metadata_path, allow_pickle=True).item()
+                self.feature_names = metadata.get('feature_names', [])
+                print(f"Enhanced features loaded: {len(self.feature_names)} features")
             else:
-                print(f"Loading original features from {args.predict_ary_path}")
-                self.factor_ary = np.load(args.predict_ary_path)
                 self.feature_names = []
+        else:
+            print(f"Loading original features from {args.predict_ary_path}")
+            self.factor_ary = np.load(args.predict_ary_path)
+            self.feature_names = []
             
         self.factor_ary = th.tensor(self.factor_ary, dtype=th.float32)  # CPU
 

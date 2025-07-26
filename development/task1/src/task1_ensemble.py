@@ -4,8 +4,14 @@ import time
 
 # Fix encoding issues on Windows
 import io
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+if os.name == 'nt':  # Windows only
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except (AttributeError, ValueError):
+        # Fallback for older Python versions
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 import torch
 import numpy as np
@@ -20,6 +26,34 @@ from metrics import *
 import matplotlib.pyplot as plt
 import pandas as pd
 from datetime import datetime
+
+
+def get_state_dim():
+    """
+    Calculate state dimension without creating full TradeSimulator instance
+    """
+    from data_config import ConfigData
+    args = ConfigData()
+    
+    # Priority loading: enhanced_v3 > optimized > enhanced > original
+    enhanced_v3_path = args.predict_ary_path.replace('.npy', '_enhanced_v3.npy')
+    optimized_path = args.predict_ary_path.replace('.npy', '_optimized.npy')
+    enhanced_path = args.predict_ary_path.replace('.npy', '_enhanced.npy')
+    
+    if os.path.exists(enhanced_v3_path):
+        factor_ary = np.load(enhanced_v3_path)
+    elif os.path.exists(optimized_path):
+        factor_ary = np.load(optimized_path)
+    elif os.path.exists(enhanced_path):
+        factor_ary = np.load(enhanced_path)
+    else:
+        factor_ary = np.load(args.predict_ary_path)
+    
+    # For enhanced v3 features, state_dim is the full feature array shape[1]
+    # since position features are already included
+    state_dim = factor_ary.shape[1]
+    
+    return state_dim
 
 
 class TrainingLogger:
@@ -613,7 +647,7 @@ def run(save_path, agent_list, log_rules=False, config_dict=None):
         "env_name": "TradeSimulator-v0",
         "num_envs": config['num_sims'],
         "max_step": max_step,
-        "state_dim": TradeSimulator(num_sims=1).state_dim,  # Dynamic detection of enhanced features
+        "state_dim": get_state_dim(),  # Dynamic detection of enhanced features
         "action_dim": 3,  # long, 0, short
         "if_discrete": True,
         "max_position": config['max_position'],
