@@ -1,0 +1,43 @@
+{
+  "datasets": {
+    "8_feature": {
+      "path": "../../../data/raw/task1/BTC_1sec_predict_optimized.npy",
+      "expected_improvement": "Baseline (Sharpe ~0.00182)",
+      "focus": "Proven 8-feature optimization"
+    },
+    "20_feature": {
+      "path": "../../../data/raw/task1/BTC_1sec_predict_enhanced_v2.npy",
+      "expected_improvement": "Better diversity, volatility handling",
+      "focus": "Technical indicators + multi-timeframe"
+    },
+    "23_feature": {
+      "path": "../../../data/raw/task1/BTC_1sec_predict_microstructure_v3.npy",
+      "expected_improvement": "Superior alpha from LOB signals",
+      "focus": "Microstructure + forced technical indicators"
+    }
+  },
+  "test_methodology": {
+    "environment": "EvalTradeSimulator with respective datasets",
+    "agents": [
+      "AgentD3QN",
+      "AgentDoubleDQN",
+      "AgentTwinD3QN"
+    ],
+    "ensemble_method": "majority_voting",
+    "evaluation_steps": 200,
+    "target_sharpe": 1.0
+  },
+  "success_metrics": {
+    "primary": "Sharpe ratio >1.0",
+    "secondary": [
+      "Win rate",
+      "Max drawdown",
+      "Total return"
+    ],
+    "microstructure_specific": [
+      "OBI signal quality",
+      "Microprice accuracy",
+      "Spread regime detection"
+    ]
+  }
+}
