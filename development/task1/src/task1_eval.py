@@ -329,7 +329,7 @@ def run_evaluation(save_path, agent_list, ensemble_method='majority_voting', ens
         "slippage": slippage,
         "num_sims": num_sims,
         "step_gap": step_gap,
-        "dataset_path": "data/raw/task1/BTC_1sec_predict.npy",  # Evaluation dataset path
+        "dataset_path": "data/raw/task1/BTC_1sec_val.npy",  # Validation dataset path - proper out-of-sample evaluation
     }
     # Detect state dimension first
     temp_sim = TradeSimulator(num_sims=1)
