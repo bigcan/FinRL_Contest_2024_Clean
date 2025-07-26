@@ -182,13 +182,21 @@ class Task1HPOOptimizer:
             # Reduce training steps for HPO (faster trials)
             config_dict['break_step'] = min(config_dict.get('break_step', 16), 8)
             
-            # Run ensemble training
-            run(
-                save_path=save_path,
-                agent_list=agent_classes,
-                log_rules=False,
-                config_dict=config_dict
-            )
+            # Run ensemble training with sys.argv workaround
+            original_argv = sys.argv.copy()
+            try:
+                # Temporarily modify sys.argv to avoid parsing issues
+                sys.argv = ['task1_ensemble.py', str(config_dict.get('gpu_id', 0))]
+                
+                run(
+                    save_path=save_path,
+                    agent_list=agent_classes,
+                    log_rules=False,
+                    config_dict=config_dict
+                )
+            finally:
+                # Restore original sys.argv
+                sys.argv = original_argv
             
             # Evaluate the trained ensemble
             metrics = self.evaluate_ensemble(save_path)
@@ -267,7 +275,7 @@ class Task1HPOOptimizer:
         Returns:
             Completed Optuna study
         """
-        self.logger.info("🚀 Starting Task 1 Hyperparameter Optimization")
+        self.logger.info("Starting Task 1 Hyperparameter Optimization")
         self.logger.info(f"Configuration: {self.hpo_config.n_trials} trials, metric: {self.evaluation_metric}")
         
         # Create study
@@ -292,14 +300,14 @@ class Task1HPOOptimizer:
             
             # Generate and display report
             report = self.results_manager.generate_optimization_report(study, "task1")
-            self.logger.info("📊 Optimization completed!")
+            self.logger.info("Optimization completed!")
             self.logger.info(f"Best value: {study.best_value:.6f}")
             self.logger.info(f"Best parameters: {study.best_params}")
             
             return study
             
         except KeyboardInterrupt:
-            self.logger.info("⚠️ Optimization interrupted by user")
+            self.logger.info("Optimization interrupted by user")
             return study
         except Exception as e:
             self.logger.error(f"Optimization failed: {str(e)}")
@@ -397,7 +405,7 @@ def main():
     study = optimizer.run_optimization()
     
     print("\n" + "="*80)
-    print("🎯 HYPERPARAMETER OPTIMIZATION COMPLETED")
+    print("HYPERPARAMETER OPTIMIZATION COMPLETED")
     print("="*80)
     print(f"Best {args.metric}: {study.best_value:.6f}")
     print(f"Best trial: {study.best_trial.number}")

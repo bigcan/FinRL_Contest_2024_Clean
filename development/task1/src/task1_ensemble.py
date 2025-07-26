@@ -482,7 +482,7 @@ class Ensemble:
         """init training logger"""
         agent_name = args.agent_class.__name__
         training_logger = TrainingLogger(save_path=self.save_path, agent_name=agent_name)
-        print(f"📊 Training logger initialized for {agent_name}")
+        print(f"Training logger initialized for {agent_name}")
 
         """train loop"""
         cwd = args.cwd

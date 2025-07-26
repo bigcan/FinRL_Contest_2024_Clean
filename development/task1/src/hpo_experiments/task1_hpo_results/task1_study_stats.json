@@ -1,0 +1,7 @@
+{
+  "best_value": -Infinity,
+  "best_trial_number": 0,
+  "n_trials": 500,
+  "study_name": "task1_production_hpo_20250725_161813",
+  "direction": "MAXIMIZE"
+}

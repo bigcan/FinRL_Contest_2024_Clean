@@ -11,10 +11,56 @@ This project is for the FinRL Contest 2024, Task 1, which focuses on cryptocurre
 *   **Evaluation:** `task1_eval.py` is used to evaluate the performance of the trained ensemble. It loads the saved models and simulates trading on a validation dataset.
 *   **Data:** The project uses pre-processed Bitcoin LOB data (`BTC_1sec_predict.npy`) for training and evaluation.
 
+### Comprehensive Backtesting Framework
+
+This framework provides a robust and comprehensive solution for evaluating trading strategies.
+
+1.  **Comprehensive Backtesting Engine (`comprehensive_backtester.py`)**
+    *   Walk-forward validation with overlapping windows
+    *   Regime-specific backtesting
+    *   Monte Carlo simulations
+    *   Advanced market regime classification
+2.  **Advanced Performance Metrics Suite (`backtest_metrics.py`)**
+    *   40+ financial metrics including Sharpe, Sortino, Calmar ratios
+    *   Risk metrics: VaR, CVaR, drawdown analysis
+    *   Distribution analysis: skewness, kurtosis, normality tests
+    *   Trade-based metrics and performance attribution
+3.  **Market Condition Analyzer (`market_condition_backtester.py`)**
+    *   7-regime market classification system
+    *   Volatility and trend analysis
+    *   Event study framework
+    *   Regime-specific performance analysis
+4.  **Transaction Cost Analysis (`transaction_cost_analyzer.py`)**
+    *   Realistic cost modeling (commission, spread, slippage, market impact)
+    *   Order execution simulation
+    *   Cost optimization strategies
+    *   Execution quality analysis
+5.  **Statistical Validation Framework (`statistical_validator.py`)**
+    *   15+ statistical tests (normality, stationarity, independence)
+    *   Performance significance testing
+    *   Cross-validation framework
+    *   Reliability assessment
+6.  **Visualization Dashboard (`backtest_visualizer.py`)**
+    *   Comprehensive static dashboards with 11 chart types
+    *   Interactive Plotly dashboards
+    *   Performance heatmaps and correlation analysis
+    *   Equity curves and drawdown analysis
+7.  **Automated Report Generator (`backtest_report_generator.py`)**
+    *   Executive summaries with key findings
+    *   Multi-format output (HTML, Markdown, JSON)
+    *   Professional report templates
+    *   Strategic recommendations
+8.  **Main Execution Script (`run_comprehensive_backtest.py`)**
+    *   Orchestrates all components
+    *   Command-line interface
+    *   Configurable parameters
+    *   Complete analysis pipeline
+
 ### Workflow
 
 1.  **Training:** The `task1_ensemble.py` script is run to train a collection of agents (e.g., `AgentD3QN`, `AgentDoubleDQN`). The trained models are saved to a directory (e.g., `ensemble_teamname/ensemble_models`).
 2.  **Evaluation:** The `task1_eval.py` script is then used to evaluate the trained ensemble. It loads the saved models and runs them in the `EvalTradeSimulator` environment. The evaluation metrics include Sharpe ratio, max drawdown, and return over max drawdown.
+3.  **Backtesting:** The `run_comprehensive_backtest.py` script orchestrates the comprehensive backtesting process, utilizing the components listed above to provide in-depth analysis of trading strategies.
 
 ### Conventions
 
@@ -93,7 +139,7 @@ This section outlines the critical challenges and solutions for implementing fea
 
 5.  **Separate Concerns with a Modular Pipeline:**
     *   **Challenge:** A monolithic system is hard to scale and debug.
-    *   **Solution:** Build a modular pipeline with separate services for: 
+    *   **Solution:** Build a modular pipeline with separate services for:
         *   **Data Ingestion:** Connects to the exchange.
         *   **Feature Calculation:** Consumes data and computes features.
         *   **RL Agent:** Makes decisions based on features.

@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import empyrical as ep
 
 def cumulative_returns(returns_pct):
     """
@@ -8,7 +7,13 @@ def cumulative_returns(returns_pct):
 
     return a pd.Series
     """
-    return ep.cum_returns(returns_pct)
+    if isinstance(returns_pct, (pd.Series, pd.DataFrame)):
+        returns = returns_pct.copy()
+    else:
+        returns = pd.Series(returns_pct)
+    
+    # Calculate cumulative returns: (1 + r1) * (1 + r2) * ... - 1
+    return (1 + returns).cumprod() - 1
 
 def sharpe_ratio(returns_pct, risk_free=0):
     """
@@ -29,7 +34,22 @@ def max_drawdown(returns_pct):
 
     return: float
     """
-    return ep.max_drawdown(returns_pct)
+    if isinstance(returns_pct, (pd.Series, pd.DataFrame)):
+        returns = returns_pct.copy()
+    else:
+        returns = pd.Series(returns_pct)
+    
+    # Calculate cumulative returns
+    cum_returns = (1 + returns).cumprod()
+    
+    # Calculate running maximum
+    peak = cum_returns.expanding().max()
+    
+    # Calculate drawdown
+    drawdown = (cum_returns - peak) / peak
+    
+    # Return maximum drawdown (most negative value)
+    return drawdown.min()
 
 def return_over_max_drawdown(returns_pct):
     """
@@ -38,9 +58,7 @@ def return_over_max_drawdown(returns_pct):
     return: float
     """
     mdd = abs(max_drawdown(returns_pct))
-    returns = cumulative_returns(returns_pct)[len(returns_pct)-1]
+    returns = cumulative_returns(returns_pct).iloc[-1] if hasattr(cumulative_returns(returns_pct), 'iloc') else cumulative_returns(returns_pct)[-1]
     if mdd == 0:
         return np.inf
     return returns/mdd
-
-
