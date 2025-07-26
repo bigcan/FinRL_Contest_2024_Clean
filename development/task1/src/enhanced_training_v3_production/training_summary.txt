@@ -1,0 +1,11 @@
+ENHANCED TRAINING V3 SUMMARY
+==================================================
+
+Training Status: FAILED
+Training Time: 3.2 minutes
+Enhanced Features V3: True
+Validation Monitoring: True
+Early Stopping: True
+Save Path: enhanced_training_v3_production
+
+Error: index 275140 is out of bounds for dimension 0 with size 164737

@@ -18,7 +18,10 @@ class QNetBase(nn.Module):  # nn.Module is a standard PyTorch Network
         self.value_std = nn.Parameter(torch.ones((1,)), requires_grad=False)
 
     def state_norm(self, state: TEN) -> TEN:
-        return (state - self.state_avg) / self.state_std
+        # Ensure state_avg and state_std are on the same device as state
+        state_avg = self.state_avg.to(state.device)
+        state_std = self.state_std.to(state.device)
+        return (state - state_avg) / state_std
 
     def value_re_norm(self, value: TEN) -> TEN:
         return value * self.value_std + self.value_avg
@@ -163,7 +166,10 @@ class ActorDiscretePPO(nn.Module):
     
     def state_norm(self, state: TEN) -> TEN:
         """Normalize state"""
-        return (state - self.state_avg) / self.state_std
+        # Ensure state_avg and state_std are on the same device as state
+        state_avg = self.state_avg.to(state.device)
+        state_std = self.state_std.to(state.device)
+        return (state - state_avg) / state_std
     
     def forward(self, state: TEN) -> TEN:
         """Forward pass returning action probabilities"""
@@ -211,7 +217,10 @@ class CriticAdv(nn.Module):
     
     def state_norm(self, state: TEN) -> TEN:
         """Normalize state"""
-        return (state - self.state_avg) / self.state_std
+        # Ensure state_avg and state_std are on the same device as state
+        state_avg = self.state_avg.to(state.device)
+        state_std = self.state_std.to(state.device)
+        return (state - state_avg) / state_std
     
     def value_re_norm(self, value: TEN) -> TEN:
         """Denormalize value"""
@@ -255,7 +264,10 @@ class ActorCriticPPO(nn.Module):
     
     def state_norm(self, state: TEN) -> TEN:
         """Normalize state"""
-        return (state - self.state_avg) / self.state_std
+        # Ensure state_avg and state_std are on the same device as state
+        state_avg = self.state_avg.to(state.device)
+        state_std = self.state_std.to(state.device)
+        return (state - state_avg) / state_std
     
     def forward(self, state: TEN) -> tuple:
         """Forward pass returning both action probabilities and state values"""

@@ -1,0 +1,11 @@
+ENHANCED TRAINING V3 SUMMARY
+==================================================
+
+Training Status: FAILED
+Training Time: 1.9 minutes
+Enhanced Features V3: True
+Validation Monitoring: True
+Early Stopping: True
+Save Path: enhanced_training_v3_cpu_final
+
+Error: The expanded size of the tensor (1) must match the existing size (64) at non-singleton dimension 0.  Target sizes: [1].  Tensor sizes: [64]

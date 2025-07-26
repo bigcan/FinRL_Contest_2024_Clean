@@ -1,0 +1,11 @@
+ENHANCED TRAINING V3 SUMMARY
+==================================================
+
+Training Status: FAILED
+Training Time: 2.2 minutes
+Enhanced Features V3: True
+Validation Monitoring: True
+Early Stopping: True
+Save Path: enhanced_training_v3_fixed
+
+Error: Expected all tensors to be on the same device, but found at least two devices, cuda:0 and cpu!

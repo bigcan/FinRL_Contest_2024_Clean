@@ -159,6 +159,9 @@ class EnhancedTrainingV3:
     def convert_hpo_params_to_config(self, hpo_params: Dict[str, Any]) -> Dict[str, Any]:
         """Convert HPO parameters to training configuration"""
         
+        # Get safe data length
+        safe_data_length = self.get_data_length()
+        
         config = {
             'gpu_id': self.gpu_id,
             'num_sims': 2**4,  # 16 parallel environments (reduced for memory)
@@ -185,13 +188,16 @@ class EnhancedTrainingV3:
             'eval_per_step_multiplier': hpo_params.get('eval_per_step_multiplier', 1),
             'num_workers': 1,
             'save_gap': 8,
-            'data_length': self.get_data_length()
+            'data_length': safe_data_length
         }
         
         return config
     
     def get_optimized_default_config(self) -> Dict[str, Any]:
         """Get optimized default configuration based on previous experiments"""
+        
+        # Get safe data length
+        safe_data_length = self.get_data_length()
         
         return {
             'gpu_id': self.gpu_id,
@@ -215,7 +221,7 @@ class EnhancedTrainingV3:
             'eval_per_step_multiplier': 1,
             'num_workers': 1,
             'save_gap': 8,
-            'data_length': self.get_data_length()
+            'data_length': safe_data_length
         }
     
     def get_data_length(self) -> int:
@@ -227,11 +233,26 @@ class EnhancedTrainingV3:
             enhanced_v3_path = args.predict_ary_path.replace('.npy', '_enhanced_v3.npy')
             if os.path.exists(enhanced_v3_path):
                 factor_ary = np.load(enhanced_v3_path)
-                # Be very conservative with data length to avoid boundary issues
-                # Use seq_len * 2 (default 10000) as the safe limit to avoid random offset + step_i overflow
-                safe_length = min(10000, int(factor_ary.shape[0] * 0.5))  # Much more conservative
-                self.logger.info(f"Calculated safe data length: {safe_length} (from {factor_ary.shape[0]} total)")
-                return safe_length
+                # Be extremely conservative with data length to avoid boundary issues
+                # The reset method needs seq_len + (seq_len * 2) buffer space
+                # seq_len = 3600, so we need at least 3600 + 7200 = 10800 buffer
+                seq_len = 3600
+                required_buffer = seq_len * 3  # Very conservative buffer
+                max_safe_length = factor_ary.shape[0] - required_buffer
+                
+                # Conservative safe limits
+                conservative_limits = [6000, 8000, 10000]  # Multiple fallback options
+                
+                for limit in conservative_limits:
+                    if max_safe_length >= limit:
+                        safe_length = limit
+                        self.logger.info(f"Using conservative data length: {safe_length} (from {factor_ary.shape[0]} total, max_safe: {max_safe_length})")
+                        return safe_length
+                
+                # Ultimate fallback - use minimum safe size
+                ultimate_safe = max(4800, required_buffer + 1000)
+                self.logger.warning(f"Using ultimate safe fallback: {ultimate_safe} (from {factor_ary.shape[0]} total)")
+                return ultimate_safe
         
         # Fallback
         return 4800

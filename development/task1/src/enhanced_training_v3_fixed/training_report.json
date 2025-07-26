@@ -1,0 +1,46 @@
+{
+  "training_summary": {
+    "training_completed": false,
+    "error": "Expected all tensors to be on the same device, but found at least two devices, cuda:0 and cpu!",
+    "training_time_minutes": 2.194181247552236
+  },
+  "configuration": {
+    "gpu_id": 0,
+    "num_sims": 16,
+    "num_ignore_step": 60,
+    "max_position": 3,
+    "step_gap": 2,
+    "slippage": 8.115232262323749e-07,
+    "starting_cash": 1000000.0,
+    "net_dims": [
+      128,
+      128,
+      128
+    ],
+    "gamma": 0.9921711590507164,
+    "explore_rate": 0.0033739136335981623,
+    "state_value_tau": 0.01681694431596554,
+    "soft_update_tau": 1.7896294756529793e-06,
+    "learning_rate": 9.528082438605629e-06,
+    "batch_size": 256,
+    "break_step": 16,
+    "buffer_size_multiplier": 2,
+    "repeat_times": 1,
+    "horizon_len_multiplier": 1,
+    "eval_per_step_multiplier": 1,
+    "num_workers": 1,
+    "save_gap": 8,
+    "data_length": 6000
+  },
+  "enhanced_features_v3": true,
+  "validation_monitoring": true,
+  "early_stopping": true,
+  "training_history": {
+    "train_metrics": [],
+    "val_metrics": [],
+    "best_val_score": -Infinity,
+    "best_model_step": 0,
+    "patience_counter": 0
+  },
+  "timestamp": "2025-07-26T16:33:55.161976"
+}

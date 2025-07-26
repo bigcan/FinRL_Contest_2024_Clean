@@ -18,6 +18,7 @@ class TradeSimulator:
         num_ignore_step=60,
         device=th.device("cpu"),
         gpu_id=-1,
+        data_length=None,
     ):
         self.device = th.device(f"cuda:{gpu_id}") if gpu_id >= 0 else device
         self.num_sims = num_sims
@@ -136,6 +137,22 @@ class TradeSimulator:
 
         self.seq_len = 3600
         self.full_seq_len = self.price_ary.shape[0]
+        
+        # Apply data_length limitation if specified
+        if data_length is not None and data_length > 0:
+            # Ensure data_length doesn't exceed actual data size
+            safe_data_length = min(data_length, self.full_seq_len)
+            
+            # Truncate data to safe_data_length (using rear alignment to keep most recent data)
+            if safe_data_length < self.full_seq_len:
+                self.factor_ary = self.factor_ary[-safe_data_length:]
+                self.price_ary = self.price_ary[-safe_data_length:]
+                self.full_seq_len = safe_data_length
+                print(f"TradeSimulator: Limited data length to {safe_data_length} samples")
+            else:
+                print(f"TradeSimulator: Using full dataset ({self.full_seq_len} samples)")
+        else:
+            print(f"TradeSimulator: Using full dataset ({self.full_seq_len} samples)")
         
         
         assert self.price_ary.shape[0] == self.factor_ary.shape[0]
@@ -265,8 +282,23 @@ class TradeSimulator:
         num_sims = self.num_sims
         device = self.device
 
-        # if if_random:
-        i0s = np.random.randint(self.seq_len, self.full_seq_len - self.seq_len * 2, size=self.num_sims)
+        # Calculate safe random range for starting positions
+        min_start = self.seq_len
+        max_start = self.full_seq_len - self.seq_len * 2
+        
+        # Handle case where data is too small for normal random range
+        if min_start >= max_start:
+            # Use a much smaller sequence length for small datasets
+            reduced_seq_len = min(self.seq_len, self.full_seq_len // 4)
+            min_start = reduced_seq_len
+            max_start = self.full_seq_len - reduced_seq_len
+            
+            if min_start >= max_start:
+                # Ultimate fallback - use fixed small positions
+                min_start = min(100, self.full_seq_len // 10)
+                max_start = max(min_start + 1, self.full_seq_len - min_start)
+        
+        i0s = np.random.randint(min_start, max_start, size=self.num_sims)
         self.step_i = 0
         self.step_is = th.tensor(i0s, dtype=th.long, device=self.device)
         self.cash = th.zeros((num_sims,), dtype=th.float32, device=device)
@@ -283,12 +315,22 @@ class TradeSimulator:
         self.reward_calculator.reset()
 
         step_is = self.step_is + self.step_i
+        
+        # Ensure step_is doesn't exceed data bounds
+        max_valid_index = self.full_seq_len - 1
+        step_is = th.clamp(step_is, 0, max_valid_index)
+        
         state = self.get_state(step_is_cpu=step_is.to(th.device("cpu")))
         return state
 
     def _step(self, action, _if_random=True):
         self.step_i += self.step_gap
         step_is = self.step_is + self.step_i
+        
+        # Ensure step_is doesn't exceed data bounds
+        max_valid_index = self.full_seq_len - 1
+        step_is = th.clamp(step_is, 0, max_valid_index)
+        
         step_is_cpu = step_is.to(th.device("cpu"))
 
         action = action.squeeze(1).to(self.device)
@@ -472,6 +514,9 @@ class EvalTradeSimulator(TradeSimulator):
         split_idx = int(len(self.factor_ary) * eval_split)
         self.factor_ary = self.factor_ary[split_idx:]
         self.price_ary = self.price_ary[split_idx:]
+        
+        # CRITICAL: Update full_seq_len after data truncation
+        self.full_seq_len = len(self.factor_ary)
         
         print(f"EvalTradeSimulator: Using last {len(self.factor_ary)} samples for evaluation (out-of-sample)")
 
