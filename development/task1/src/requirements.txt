@@ -1,4 +1,4 @@
-﻿certifi==2024.12.14
+certifi==2024.12.14
 charset-normalizer==3.4.1
 empyrical==0.5.5
 filelock==3.16.1
