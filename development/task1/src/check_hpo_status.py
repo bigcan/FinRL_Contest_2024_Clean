@@ -13,7 +13,7 @@ def check_hpo_status():
     """Check the current status of HPO optimization"""
     
     # Database path
-    db_path = "task1_production_hpo.db"
+    db_path = "archived_experiments/hpo_databases/task1_production_hpo.db"
     
     if not os.path.exists(db_path):
         print("ERROR: HPO database not found. Optimization may not have started.")

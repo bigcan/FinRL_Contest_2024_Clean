@@ -291,16 +291,22 @@ class EnsembleEvaluator:
             self.recent_performance = self.recent_performance[-100:]
 
 
-def run_evaluation(save_path, agent_list, ensemble_method='majority_voting'):
+def run_evaluation(save_path, agent_list, ensemble_method='majority_voting', ensemble_path=None):
     """
     Run ensemble evaluation with configurable ensemble method
     
     Args:
-        save_path: Path to saved ensemble models
+        save_path: Path to saved ensemble models (legacy parameter)
         agent_list: List of agent classes to evaluate
         ensemble_method: Ensemble method to use ('majority_voting', 'weighted_voting', 'adaptive_meta')
+        ensemble_path: Alternative path to ensemble models (used by HPO script)
     """
     import sys
+
+    # Use ensemble_path if provided (for HPO compatibility), otherwise use save_path
+    if ensemble_path is not None:
+        save_path = ensemble_path
+        print(f"🔧 HPO Mode: Using ensemble_path = {ensemble_path}")
 
     gpu_id = int(sys.argv[1]) if len(sys.argv) > 1 else -1  # Get GPU_ID from command line arguments
 

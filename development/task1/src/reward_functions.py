@@ -82,6 +82,8 @@ class RewardCalculator:
             return self._sharpe_adjusted_reward(old_asset, new_asset, action_int, mid_price, slippage)
         elif self.reward_type == "multi_objective":
             return self._multi_objective_reward(old_asset, new_asset, action_int, mid_price, slippage)
+        elif self.reward_type == "profit_maximizing":
+            return self._profit_maximizing_reward(old_asset, new_asset, action_int, mid_price, slippage)
         else:
             raise ValueError(f"Unknown reward type: {self.reward_type}")
     
@@ -213,6 +215,70 @@ class RewardCalculator:
         self.return_history.append(return_rate)
         
         return reward
+    
+    def _profit_maximizing_reward(self,
+                                old_asset: th.Tensor,
+                                new_asset: th.Tensor,
+                                action_int: th.Tensor,
+                                mid_price: th.Tensor,
+                                slippage: float) -> th.Tensor:
+        """
+        Aggressive profit-maximizing reward function
+        Optimized for achieving Sharpe ratio > 1.0
+        """
+        # Base profit/loss
+        raw_return = new_asset - old_asset
+        
+        # Amplify profitable signals by 10x
+        profit_amplifier = 10.0
+        amplified_return = raw_return * profit_amplifier
+        
+        # Momentum bonus - reward consistent profitable trades
+        current_asset = new_asset.mean().item()
+        self.asset_history.append(current_asset)
+        
+        momentum_bonus = th.zeros_like(raw_return)
+        if len(self.asset_history) >= 5:
+            recent_returns = []
+            for i in range(1, min(6, len(self.asset_history))):
+                ret = (self.asset_history[-i] - self.asset_history[-i-1]) / self.asset_history[-i-1]
+                recent_returns.append(ret)
+            
+            # Bonus for consistent positive returns
+            if len(recent_returns) >= 3 and all(r > 0 for r in recent_returns[-3:]):
+                momentum_bonus = th.tensor(1000.0, device=self.device, dtype=raw_return.dtype)
+        
+        # Position holding bonus - encourage maintaining profitable positions
+        position_bonus = th.zeros_like(raw_return)
+        if raw_return.item() > 0 and action_int.abs().sum().item() == 0:  # Holding profitable position
+            position_bonus = raw_return * 2.0  # Double reward for holding winners
+        
+        # Reduced transaction cost penalty (encourage more trading)
+        transaction_cost = th.zeros_like(raw_return)
+        if action_int.abs().sum().item() > 0:  # Only if trading occurred
+            cost = mid_price * slippage * self.transaction_cost_penalty * 0.5  # Half penalty
+            transaction_cost = cost.expand_as(raw_return)
+        
+        # Volatility-adjusted scaling (reward higher vol periods more)
+        vol_adjustment = 1.0
+        if len(self.return_history) >= 10:
+            returns_array = np.array(list(self.return_history)[-10:])
+            current_vol = np.std(returns_array)
+            if current_vol > 0:
+                vol_adjustment = min(3.0, 1.0 + current_vol * 100)  # Scale with volatility
+        
+        # Combine all components
+        total_reward = (amplified_return + 
+                       momentum_bonus + 
+                       position_bonus - 
+                       transaction_cost) * vol_adjustment
+        
+        # Update tracking
+        if len(self.asset_history) >= 2:
+            current_return = (current_asset - self.asset_history[-2]) / self.asset_history[-2]
+            self.return_history.append(current_return)
+        
+        return total_reward
     
     def get_performance_metrics(self) -> dict:
         """Get current performance metrics for monitoring"""
