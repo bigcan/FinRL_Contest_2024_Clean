@@ -13,6 +13,11 @@ from typing import Dict, Any, List
 import logging
 from datetime import datetime
 
+# Fix encoding issues on Windows
+import io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
 # Import existing modules
 from task1_ensemble import run, Ensemble
 from erl_agent import AgentD3QN, AgentDoubleDQN, AgentTwinD3QN

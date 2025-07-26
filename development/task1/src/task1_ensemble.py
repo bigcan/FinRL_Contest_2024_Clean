@@ -1,5 +1,12 @@
 import os
+import sys
 import time
+
+# Fix encoding issues on Windows
+import io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
 import torch
 import numpy as np
 from erl_config import Config, build_env
