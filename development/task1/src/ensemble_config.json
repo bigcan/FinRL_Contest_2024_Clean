@@ -37,6 +37,25 @@
     "agents": [
         "AgentD3QN",
         "AgentDoubleDQN", 
-        "AgentPrioritizedDQN"
-    ]
+        "AgentPrioritizedDQN",
+        "AgentNoisyDuelDQN",
+        "AgentRainbowDQN",
+        "AgentAdaptiveDQN"
+    ],
+    "ensemble_strategy": "weighted_voting",
+    "per_config": {
+        "alpha": 0.6,
+        "beta": 0.4,
+        "beta_annealing_steps": 100000
+    },
+    "rainbow_config": {
+        "n_step": 3
+    },
+    "adaptive_lr_config": {
+        "lr_strategy": "cosine_annealing",
+        "lr_T_max": 10000,
+        "lr_patience": 100,
+        "lr_factor": 0.8,
+        "adaptive_grad_clip": true
+    }
 }

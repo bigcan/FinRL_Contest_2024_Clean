@@ -7,7 +7,9 @@ from torch.nn.utils import clip_grad_norm_
 
 from erl_config import Config
 from erl_replay_buffer import ReplayBuffer
-from erl_net import QNetTwin, QNetTwinDuel 
+from erl_per_buffer import PrioritizedReplayBuffer
+from erl_net import QNetTwin, QNetTwinDuel
+from erl_noisy_net import QNetTwinNoisy, QNetTwinDuelNoisy 
 
 
 def get_optim_param(optimizer: torch.optim) -> list:  # backup
@@ -238,12 +240,369 @@ class AgentD3QN(AgentDoubleDQN):  # Dueling Double Deep Q Network. (D3QN)
         super().__init__(net_dims=net_dims, state_dim=state_dim, action_dim=action_dim, gpu_id=gpu_id, args=args)
 
 class AgentPrioritizedDQN(AgentDoubleDQN):
-    """Double DQN with prioritized experience replay for ensemble diversity"""
+    """Double DQN with Prioritized Experience Replay for improved sample efficiency"""
     def __init__(self, net_dims: [int], state_dim: int, action_dim: int, gpu_id: int = 0, args: Config = Config()):
-        # Use different network architecture for diversity
+        # Use Dueling architecture for better value estimation
         self.act_class = getattr(self, "act_class", QNetTwinDuel)
         self.cri_class = getattr(self, "cri_class", None)
-        # Modify hyperparameters for diversity
-        args.learning_rate = args.learning_rate * 1.5  # Higher learning rate
-        args.soft_update_tau = args.soft_update_tau * 2  # Faster target updates
+        
+        # PER hyperparameters
+        self.per_alpha = getattr(args, 'per_alpha', 0.6)
+        self.per_beta = getattr(args, 'per_beta', 0.4)
+        self.per_beta_annealing_steps = getattr(args, 'per_beta_annealing_steps', 100000)
+        
         super().__init__(net_dims=net_dims, state_dim=state_dim, action_dim=action_dim, gpu_id=gpu_id, args=args)
+        
+    def get_obj_critic_per(self, buffer: PrioritizedReplayBuffer, batch_size: int) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+        """
+        Calculate loss with Prioritized Experience Replay
+        
+        Returns:
+            obj_critic: Loss value
+            q1: Q-values from first network
+            indices: Sample indices for priority updates
+            td_errors: TD errors for priority updates
+        """
+        # Sample from PER buffer
+        states, actions, rewards, undones, next_ss, indices, weights = buffer.sample(batch_size)
+        
+        with torch.no_grad():
+            # Double DQN: use online network for action selection
+            next_q1_online, next_q2_online = self.act.get_q1_q2(next_ss)
+            next_actions = torch.min(next_q1_online, next_q2_online).argmax(dim=1, keepdim=True)
+            
+            # Use target network for evaluation with selected actions
+            next_q1_target, next_q2_target = self.cri_target.get_q1_q2(next_ss)
+            next_qs = torch.min(next_q1_target, next_q2_target).gather(1, next_actions).squeeze(1)
+            q_labels = rewards + undones * self.gamma * next_qs
+
+        # Get current Q-values
+        q1, q2 = [qs.gather(1, actions.long()).squeeze(1) for qs in self.act.get_q1_q2(states)]
+        
+        # Calculate TD errors for priority updates
+        td_errors = torch.abs(q1 - q_labels) + torch.abs(q2 - q_labels)
+        
+        # Apply importance sampling weights
+        weights = weights.to(self.device)
+        weighted_loss1 = (self.criterion(q1, q_labels) * weights).mean()
+        weighted_loss2 = (self.criterion(q2, q_labels) * weights).mean()
+        obj_critic = weighted_loss1 + weighted_loss2
+        
+        return obj_critic, q1, indices, td_errors
+    
+    def update_net(self, buffer) -> Tuple[float, ...]:
+        """Update network using PER if available, otherwise fall back to standard replay"""
+        if isinstance(buffer, PrioritizedReplayBuffer):
+            return self.update_net_per(buffer)
+        else:
+            return super().update_net(buffer)
+    
+    def update_net_per(self, buffer: PrioritizedReplayBuffer) -> Tuple[float, ...]:
+        """Update network using Prioritized Experience Replay"""
+        with torch.no_grad():
+            states, actions, rewards, undones = buffer.add_item
+            self.update_avg_std_for_normalization(
+                states=states.reshape((-1, self.state_dim)),
+                returns=self.get_cumulative_rewards(rewards=rewards, undones=undones).reshape((-1,))
+            )
+
+        obj_critics = 0.0
+        obj_actors = 0.0
+
+        update_times = int(buffer.add_size * self.repeat_times)
+        assert update_times >= 1
+        
+        for _ in range(update_times):
+            obj_critic, q_value, indices, td_errors = self.get_obj_critic_per(buffer, self.batch_size)
+            obj_critics += obj_critic.item()
+            obj_actors += q_value.mean().item()
+            
+            # Update network
+            self.optimizer_update(self.cri_optimizer, obj_critic)
+            self.soft_update(self.cri_target, self.cri, self.soft_update_tau)
+            
+            # Update priorities in buffer
+            buffer.update_priorities(indices, td_errors)
+            
+        return obj_critics / update_times, obj_actors / update_times
+
+
+class AgentNoisyDQN(AgentDoubleDQN):
+    """Double DQN with Noisy Networks for parameter space exploration"""
+    def __init__(self, net_dims: [int], state_dim: int, action_dim: int, gpu_id: int = 0, args: Config = Config()):
+        # Use Noisy Networks for exploration
+        self.act_class = getattr(self, "act_class", QNetTwinNoisy)
+        self.cri_class = getattr(self, "cri_class", None)
+        super().__init__(net_dims=net_dims, state_dim=state_dim, action_dim=action_dim, gpu_id=gpu_id, args=args)
+        
+    def explore_env(self, env, horizon_len: int, if_random: bool = False) -> Tuple[Tensor, ...]:
+        """
+        Exploration using Noisy Networks (no epsilon-greedy needed)
+        """
+        states = torch.zeros((horizon_len, self.num_envs, self.state_dim), dtype=torch.float32).to(self.device)
+        actions = torch.zeros((horizon_len, self.num_envs, 1), dtype=torch.int32).to(self.device)
+        rewards = torch.zeros((horizon_len, self.num_envs), dtype=torch.float32).to(self.device)
+        dones = torch.zeros((horizon_len, self.num_envs), dtype=torch.bool).to(self.device)
+
+        state = self.last_state
+
+        # Reset noise in noisy layers before exploration
+        if hasattr(self.act, 'reset_noise'):
+            self.act.reset_noise()
+            
+        get_action = self.act.get_action
+        for t in range(horizon_len):
+            action = torch.randint(self.action_dim, size=(self.num_envs, 1)) if if_random \
+                else get_action(state).detach()
+            states[t] = state
+
+            state, reward, done, _ = env.step(action)
+            actions[t] = action
+            rewards[t] = reward
+            dones[t] = done
+
+        self.last_state = state
+
+        rewards *= self.reward_scale
+        undones = 1.0 - dones.type(torch.float32)
+        return states, actions, rewards, undones
+
+
+class AgentNoisyDuelDQN(AgentDoubleDQN):
+    """Double DQN with Noisy Dueling Networks for advanced exploration"""
+    def __init__(self, net_dims: [int], state_dim: int, action_dim: int, gpu_id: int = 0, args: Config = Config()):
+        # Use Noisy Dueling Networks
+        self.act_class = getattr(self, "act_class", QNetTwinDuelNoisy)
+        self.cri_class = getattr(self, "cri_class", None)
+        super().__init__(net_dims=net_dims, state_dim=state_dim, action_dim=action_dim, gpu_id=gpu_id, args=args)
+        
+    def explore_env(self, env, horizon_len: int, if_random: bool = False) -> Tuple[Tensor, ...]:
+        """
+        Exploration using Noisy Dueling Networks
+        """
+        states = torch.zeros((horizon_len, self.num_envs, self.state_dim), dtype=torch.float32).to(self.device)
+        actions = torch.zeros((horizon_len, self.num_envs, 1), dtype=torch.int32).to(self.device)
+        rewards = torch.zeros((horizon_len, self.num_envs), dtype=torch.float32).to(self.device)
+        dones = torch.zeros((horizon_len, self.num_envs), dtype=torch.bool).to(self.device)
+
+        state = self.last_state
+
+        # Reset noise in noisy layers before exploration
+        if hasattr(self.act, 'reset_noise'):
+            self.act.reset_noise()
+            
+        get_action = self.act.get_action
+        for t in range(horizon_len):
+            action = torch.randint(self.action_dim, size=(self.num_envs, 1)) if if_random \
+                else get_action(state).detach()
+            states[t] = state
+
+            state, reward, done, _ = env.step(action)
+            actions[t] = action
+            rewards[t] = reward
+            dones[t] = done
+
+        self.last_state = state
+
+        rewards *= self.reward_scale
+        undones = 1.0 - dones.type(torch.float32)
+        return states, actions, rewards, undones
+
+
+
+class AgentRainbowDQN(AgentDoubleDQN):
+    """Rainbow DQN with multi-step learning and other Rainbow components"""
+    def __init__(self, net_dims: [int], state_dim: int, action_dim: int, gpu_id: int = 0, args: Config = Config()):
+        # Multi-step learning parameters
+        self.n_step = getattr(args, "n_step", 3)  # N-step returns
+        
+        # Use Noisy Dueling Networks
+        self.act_class = getattr(self, "act_class", QNetTwinDuelNoisy)
+        self.cri_class = getattr(self, "cri_class", None)
+        super().__init__(net_dims=net_dims, state_dim=state_dim, action_dim=action_dim, gpu_id=gpu_id, args=args)
+        
+    def get_obj_critic_multistep(self, buffer: ReplayBuffer, batch_size: int) -> Tuple[Tensor, Tensor]:
+        """Calculate loss with multi-step learning"""
+        with torch.no_grad():
+            states, actions, rewards, undones, next_ss = buffer.sample(batch_size)
+            
+            # Double DQN with multi-step
+            next_q1_online, next_q2_online = self.act.get_q1_q2(next_ss)
+            next_actions = torch.min(next_q1_online, next_q2_online).argmax(dim=1, keepdim=True)
+            
+            next_q1_target, next_q2_target = self.cri_target.get_q1_q2(next_ss)
+            next_qs = torch.min(next_q1_target, next_q2_target).gather(1, next_actions).squeeze(1)
+            
+            # Multi-step discount
+            gamma_n = self.gamma ** self.n_step
+            q_labels = rewards + undones * gamma_n * next_qs
+
+        q1, q2 = [qs.gather(1, actions.long()).squeeze(1) for qs in self.act.get_q1_q2(states)]
+        obj_critic = self.criterion(q1, q_labels) + self.criterion(q2, q_labels)
+        return obj_critic, q1
+    
+    def explore_env(self, env, horizon_len: int, if_random: bool = False) -> Tuple[Tensor, ...]:
+        """Exploration with noisy networks"""
+        states = torch.zeros((horizon_len, self.num_envs, self.state_dim), dtype=torch.float32).to(self.device)
+        actions = torch.zeros((horizon_len, self.num_envs, 1), dtype=torch.int32).to(self.device)
+        rewards = torch.zeros((horizon_len, self.num_envs), dtype=torch.float32).to(self.device)
+        dones = torch.zeros((horizon_len, self.num_envs), dtype=torch.bool).to(self.device)
+
+        state = self.last_state
+
+        # Reset noise in noisy layers
+        if hasattr(self.act, "reset_noise"):
+            self.act.reset_noise()
+            
+        get_action = self.act.get_action
+        for t in range(horizon_len):
+            action = torch.randint(self.action_dim, size=(self.num_envs, 1)) if if_random \
+                else get_action(state).detach()
+            states[t] = state
+
+            state, reward, done, _ = env.step(action)
+            actions[t] = action
+            rewards[t] = reward
+            dones[t] = done
+
+        self.last_state = state
+
+        rewards *= self.reward_scale
+        undones = 1.0 - dones.type(torch.float32)
+        return states, actions, rewards, undones
+    
+    def update_net(self, buffer: ReplayBuffer) -> Tuple[float, ...]:
+        """Update network with multi-step learning"""
+        with torch.no_grad():
+            states, actions, rewards, undones = buffer.add_item
+            self.update_avg_std_for_normalization(
+                states=states.reshape((-1, self.state_dim)),
+                returns=self.get_cumulative_rewards(rewards=rewards, undones=undones).reshape((-1,))
+            )
+
+        obj_critics = 0.0
+        obj_actors = 0.0
+
+        update_times = int(buffer.add_size * self.repeat_times)
+        assert update_times >= 1
+        
+        for _ in range(update_times):
+            # Use multi-step learning
+            obj_critic, q_value = self.get_obj_critic_multistep(buffer, self.batch_size)
+            obj_critics += obj_critic.item()
+            obj_actors += q_value.mean().item()
+            
+            self.optimizer_update(self.cri_optimizer, obj_critic)
+            self.soft_update(self.cri_target, self.cri, self.soft_update_tau)
+            
+        return obj_critics / update_times, obj_actors / update_times
+
+
+
+
+class AgentAdaptiveDQN(AgentDoubleDQN):
+    """Double DQN with Adaptive Learning Rate Scheduling and Advanced Optimization"""
+    def __init__(self, net_dims: [int], state_dim: int, action_dim: int, gpu_id: int = 0, args: Config = Config()):
+        # Use Dueling Networks
+        self.act_class = getattr(self, "act_class", QNetTwinDuel)
+        self.cri_class = getattr(self, "cri_class", None)
+        
+        # Adaptive LR parameters
+        self.lr_strategy = getattr(args, "lr_strategy", "cosine_annealing")
+        self.adaptive_grad_clip = getattr(args, "adaptive_grad_clip", True)
+        
+        super().__init__(net_dims=net_dims, state_dim=state_dim, action_dim=action_dim, gpu_id=gpu_id, args=args)
+        
+        # Initialize adaptive optimizers
+        self._setup_adaptive_optimizers(args)
+        
+    def _setup_adaptive_optimizers(self, args):
+        """Setup adaptive learning rate schedulers and optimizers"""
+        from erl_lr_scheduler import AdaptiveLRScheduler, AdaptiveOptimizerWrapper
+        
+        # Create adaptive LR schedulers
+        act_lr_scheduler = AdaptiveLRScheduler(
+            self.act_optimizer, 
+            strategy=self.lr_strategy,
+            T_max=getattr(args, "lr_T_max", 10000),
+            patience=getattr(args, "lr_patience", 100),
+            factor=getattr(args, "lr_factor", 0.8)
+        )
+        
+        if self.cri_optimizer \!= self.act_optimizer:
+            cri_lr_scheduler = AdaptiveLRScheduler(
+                self.cri_optimizer,
+                strategy=self.lr_strategy,
+                T_max=getattr(args, "lr_T_max", 10000),
+                patience=getattr(args, "lr_patience", 100),
+                factor=getattr(args, "lr_factor", 0.8)
+            )
+        else:
+            cri_lr_scheduler = act_lr_scheduler
+            
+        # Wrap optimizers with adaptive features
+        self.adaptive_act_optimizer = AdaptiveOptimizerWrapper(
+            self.act_optimizer,
+            act_lr_scheduler,
+            grad_clip_norm=self.clip_grad_norm,
+            adaptive_grad_clip=self.adaptive_grad_clip
+        )
+        
+        self.adaptive_cri_optimizer = AdaptiveOptimizerWrapper(
+            self.cri_optimizer,
+            cri_lr_scheduler,
+            grad_clip_norm=self.clip_grad_norm,
+            adaptive_grad_clip=self.adaptive_grad_clip
+        ) if self.cri_optimizer \!= self.act_optimizer else self.adaptive_act_optimizer
+    
+    def optimizer_update(self, optimizer: torch.optim, objective: Tensor):
+        """Override optimizer update to use adaptive features"""
+        # Calculate performance metric (negative loss for "higher is better")
+        performance = -objective.item()
+        
+        optimizer.zero_grad()
+        objective.backward()
+        
+        # Use adaptive optimizer if available
+        if hasattr(self, "adaptive_cri_optimizer") and optimizer == self.cri_optimizer:
+            self.adaptive_cri_optimizer.step(performance)
+        elif hasattr(self, "adaptive_act_optimizer") and optimizer == self.act_optimizer:
+            self.adaptive_act_optimizer.step(performance)
+        else:
+            # Fallback to standard optimization
+            clip_grad_norm_(parameters=optimizer.param_groups[0]["params"], max_norm=self.clip_grad_norm)
+            optimizer.step()
+    
+    def get_training_stats(self) -> dict:
+        """Get training statistics including adaptive LR info"""
+        stats = {}
+        
+        if hasattr(self, "adaptive_cri_optimizer"):
+            stats["critic_lr"] = self.adaptive_cri_optimizer.get_lr()
+            stats["critic_grad_norm"] = self.adaptive_cri_optimizer.get_grad_norm()
+            
+        if hasattr(self, "adaptive_act_optimizer"):
+            stats["actor_lr"] = self.adaptive_act_optimizer.get_lr()
+            stats["actor_grad_norm"] = self.adaptive_act_optimizer.get_grad_norm()
+            
+        return stats
+    
+    def save_or_load_agent(self, cwd: str, if_save: bool):
+        """Enhanced save/load with adaptive optimizer states"""
+        super().save_or_load_agent(cwd, if_save)
+        
+        # Save/load adaptive optimizer states
+        if if_save:
+            if hasattr(self, "adaptive_cri_optimizer"):
+                torch.save(self.adaptive_cri_optimizer.state_dict(), f"{cwd}/adaptive_cri_optimizer.pth")
+            if hasattr(self, "adaptive_act_optimizer") and self.adaptive_act_optimizer \!= self.adaptive_cri_optimizer:
+                torch.save(self.adaptive_act_optimizer.state_dict(), f"{cwd}/adaptive_act_optimizer.pth")
+        else:
+            cri_path = f"{cwd}/adaptive_cri_optimizer.pth"
+            if os.path.isfile(cri_path) and hasattr(self, "adaptive_cri_optimizer"):
+                self.adaptive_cri_optimizer.load_state_dict(torch.load(cri_path, map_location=self.device))
+                
+            act_path = f"{cwd}/adaptive_act_optimizer.pth"
+            if os.path.isfile(act_path) and hasattr(self, "adaptive_act_optimizer") and self.adaptive_act_optimizer \!= self.adaptive_cri_optimizer:
+                self.adaptive_act_optimizer.load_state_dict(torch.load(act_path, map_location=self.device))
+
