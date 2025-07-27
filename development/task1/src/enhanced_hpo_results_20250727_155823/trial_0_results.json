@@ -1,0 +1,46 @@
+{
+  "trial_number": 0,
+  "objective_value": -10.0,
+  "parameters": {
+    "net_dims_0": 192,
+    "net_dims_1": 512,
+    "net_dims_2": 384,
+    "learning_rate": 6.251373574521755e-05,
+    "gamma": 0.9914041677639819,
+    "explore_rate": 0.01699897838270077,
+    "min_explore_rate": 0.007613762547568976,
+    "batch_size": 128,
+    "buffer_size_multiplier": 16,
+    "horizon_len_multiplier": 4,
+    "repeat_times": 1,
+    "soft_update_tau": 3.5113563139704077e-06,
+    "state_value_tau": 0.007751067647801507,
+    "num_sims": 64,
+    "step_gap": 4,
+    "slippage": 2.6210878782654387e-08,
+    "max_position": 1,
+    "reward_type": "adaptive_multi_objective",
+    "conservatism_penalty_weight": 0.39473622108257667,
+    "action_diversity_weight": 0.09991844553958994,
+    "transaction_cost_weight": 0.5628109945722505,
+    "risk_adjusted_return_weight": 0.7146901982034297,
+    "conservatism_escalation_rate": 1.0464504127199978,
+    "activity_threshold": 0.3822634555704315,
+    "regime_sensitivity": 0.7557861855309373,
+    "exploration_decay_rate": 0.9905854643368676,
+    "exploration_warmup_steps": 9540,
+    "force_exploration_probability": 0.09690688297671035
+  },
+  "results": {
+    "sharpe_ratio": -10.0,
+    "total_return": -1.0,
+    "max_drawdown": 1.0,
+    "action_diversity": 0.0,
+    "training_failed": true
+  },
+  "diversity_metrics": {
+    "status": "warming_up",
+    "total_steps": 0
+  },
+  "timestamp": "2025-07-27T15:58:39.717322"
+}

@@ -1,0 +1,11 @@
+{
+  "study_name": "finrl_enhanced_v3_20250726_232823",
+  "feature_set": "enhanced_v3",
+  "feature_dimensions": 41,
+  "metric": "sharpe_ratio",
+  "n_trials": 150,
+  "start_time": "2025-07-26T23:28:40.833355",
+  "gpu_id": 0,
+  "database": "task1_enhanced_v3_hpo.db",
+  "log_file": "hpo_enhanced_v3_sharpe_ratio_20250726_232840.log"
+}

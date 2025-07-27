@@ -1,0 +1,32 @@
+Optimized Ensemble Training Started at 2025-07-26 23:25:03.010296
+Configuration: {
+  "gpu_id": 0,
+  "net_dims": [
+    64,
+    320,
+    128
+  ],
+  "learning_rate": 1.5673095467235414e-06,
+  "gamma": 0.99853996983528,
+  "explore_rate": 0.08536189862866832,
+  "batch_size": 128,
+  "buffer_size_multiplier": 9,
+  "horizon_len_multiplier": 1,
+  "repeat_times": 2,
+  "soft_update_tau": 1.2681352169084602e-06,
+  "state_value_tau": 0.01863980603118173,
+  "num_sims": 64,
+  "step_gap": 3,
+  "slippage": 3.5856126103453905e-08,
+  "max_position": 3,
+  "starting_cash": 1000000,
+  "num_ignore_step": 60,
+  "break_step": 16,
+  "save_gap": 8,
+  "num_workers": 1,
+  "data_length": 4800,
+  "eval_per_step_multiplier": 1
+}
+================================================================================
+/home/bigcan/.local/lib/python3.12/site-packages/numpy/_core/_methods.py:191: RuntimeWarning: invalid value encountered in subtract
+  x = asanyarray(arr - arrmean)

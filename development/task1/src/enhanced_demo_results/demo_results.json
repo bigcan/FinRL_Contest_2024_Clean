@@ -1,0 +1,10 @@
+{
+  "mean_return": 14322.808850479127,
+  "sharpe_ratio": 3.7199116911665753,
+  "action_ratios": [
+    0.28,
+    0.393,
+    0.327
+  ],
+  "entropy": 0.9912414485795988,
+  "conservative_behavior": 

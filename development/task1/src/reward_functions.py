@@ -604,21 +604,21 @@ class RewardCalculator:
         weights = self.reward_weights
         
         # Base return with risk adjustment
-        risk_adjusted_return = raw_return * weights['risk_adjusted_return_weight'] + sharpe_component
+        risk_adjusted_return = raw_return * weights.get('risk_adjusted_return_weight', 0.7) + sharpe_component
         
         # Apply all modifiers
         total_reward = (
             risk_adjusted_return
-            + diversity_reward * weights['action_diversity_weight']
-            - conservatism_penalty * weights['conservatism_penalty_weight']
-            - transaction_cost * weights['transaction_cost_weight']
+            + diversity_reward * weights.get('action_diversity_weight', 0.15)
+            - conservatism_penalty * weights.get('conservatism_penalty_weight', 0.2)
+            - transaction_cost * weights.get('transaction_cost_weight', 0.5)
             - drawdown_penalty
         )
         
         # Market regime-specific adjustments
-        if market_regime == "trending" and action_int.item() != 0:  # Reward trading in trends
+        if market_regime == "trending" and action_int.abs().sum().item() > 0:  # Reward trading in trends
             total_reward *= 1.2
-        elif market_regime == "volatile" and action_int.item() == 0:  # Penalize holding in volatility
+        elif market_regime == "volatile" and action_int.abs().sum().item() == 0:  # Penalize holding in volatility
             total_reward *= 0.8
             
         return total_reward
