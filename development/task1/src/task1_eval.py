@@ -45,12 +45,13 @@ class EnsembleEvaluator:
 
         self.trade_env = build_env(args.env_class, args.env_args, gpu_id=args.gpu_id)
 
-        self.current_btc = 0
-        self.cash = [args.starting_cash]
-        self.btc_assets = [0]
-        # self.net_assets = [torch.tensor(args.starting_cash, device=self.device)]
-        self.net_assets = [args.starting_cash]
+        # REMOVED: Independent portfolio tracking that caused lookahead bias
+        # No longer maintaining self.current_btc, self.cash, self.btc_assets, self.net_assets
+        # Will use TradeSimulator's ground truth values exclusively
         self.starting_cash = args.starting_cash
+        
+        # Track ground truth portfolio values from TradeSimulator
+        self.portfolio_history = []  # Will store actual portfolio values from trade_env
         
         # Advanced ensemble tracking
         self._initialize_performance_tracking()
@@ -132,7 +133,8 @@ class EnsembleEvaluator:
         positions = []
         action_ints = []
         correct_pred = []
-        current_btcs = [self.current_btc]
+        # REMOVED: current_btcs tracking (was using biased self.current_btc)
+        # Position tracking now handled via TradeSimulator ground truth
 
         for step_idx in range(trade_env.max_step):
             actions = []
@@ -196,67 +198,94 @@ class EnsembleEvaluator:
             action_ints.append(action_int)
             positions.append(trade_env.position)
 
-            # Manually compute cumulative returns
-            mid_price = trade_env.price_ary[trade_env.step_i, 2].to(self.device)
-
-            new_cash = self.cash[-1]
-
-            if action_int > 0 and self.cash[-1] > mid_price:  # Buy
-                last_cash = self.cash[-1]
-                new_cash = last_cash - mid_price
-                self.current_btc += 1
-            elif action_int < 0 and self.current_btc > 0:  # Sell
-                last_cash = self.cash[-1]
-                new_cash = last_cash + mid_price
-                self.current_btc -= 1
-
-            self.cash.append(new_cash)
-            self.btc_assets.append((self.current_btc * mid_price).item())
-            self.net_assets.append((to_python_number(self.btc_assets[-1]) + to_python_number(new_cash)))
+            # FIXED: Use TradeSimulator's ground truth portfolio values (no lookahead bias)
+            # Extract actual portfolio state after trade execution
+            true_asset_value = trade_env.asset[0].item()  # Ground truth total asset value
+            true_cash_value = trade_env.cash[0].item()    # Ground truth cash balance
+            true_position = trade_env.position[0].item()  # Ground truth position
+            
+            # Store ground truth portfolio value for metrics calculation
+            self.portfolio_history.append({
+                'step': step_idx,
+                'total_asset': true_asset_value,
+                'cash': true_cash_value,
+                'position': true_position,
+                'action': action_int
+            })
 
             last_state = state
 
-            # Log win rate
-            if action_int == 1:
-                correct_pred.append(1 if last_price < mid_price else -1 if last_price > mid_price else 0)
-            elif action_int == -1:
-                correct_pred.append(-1 if last_price < mid_price else 1 if last_price > mid_price else 0)
+            # Log win rate using ground truth values (remove lookahead bias)
+            if step_idx > 0:  # Need previous portfolio value for comparison
+                prev_asset = self.portfolio_history[-2]['total_asset'] if len(self.portfolio_history) > 1 else self.starting_cash
+                asset_change = true_asset_value - prev_asset
+                
+                if action_int == 1:  # Buy action
+                    correct_pred.append(1 if asset_change > 0 else -1 if asset_change < 0 else 0)
+                elif action_int == -1:  # Sell action
+                    correct_pred.append(-1 if asset_change > 0 else 1 if asset_change < 0 else 0)
+                else:  # Hold action
+                    correct_pred.append(0)
             else:
-                correct_pred.append(0)
+                correct_pred.append(0)  # First step, no comparison possible
 
-            last_price = mid_price
-            current_btcs.append(self.current_btc)
-
-        # Save results (convert CUDA tensors to CPU numpy arrays)
+        # FIXED: Save ground truth results (no more biased portfolio values)
         positions_cpu = [pos.cpu().numpy() if hasattr(pos, 'cpu') else pos for pos in positions]
         np.save("evaluation_positions.npy", np.array(positions_cpu))
-        np.save("evaluation_net_assets.npy", np.array(self.net_assets))
-        np.save("evaluation_btc_positions.npy", np.array(self.btc_assets))
+        
+        # Extract ground truth portfolio values for saving and metrics
+        true_net_assets = [entry['total_asset'] for entry in self.portfolio_history]
+        true_cash_values = [entry['cash'] for entry in self.portfolio_history]
+        true_positions = [entry['position'] for entry in self.portfolio_history]
+        
+        np.save("evaluation_net_assets.npy", np.array(true_net_assets))
+        np.save("evaluation_cash_values.npy", np.array(true_cash_values))
+        np.save("evaluation_true_positions.npy", np.array(true_positions))
         np.save("evaluation_correct_predictions.npy", np.array(correct_pred))
 
-        # DEBUG: Print action distribution
+        # Print honest action distribution
         if hasattr(self, 'action_counts'):
             total_actions = sum(self.action_counts.values())
-            print(f"DEBUG: Action Distribution:")
+            print(f"\n📊 HONEST Action Distribution (Fixed Evaluation):")
             print(f"  Sell (0): {self.action_counts[0]} ({self.action_counts[0]/total_actions*100:.1f}%)")
             print(f"  Hold (1): {self.action_counts[1]} ({self.action_counts[1]/total_actions*100:.1f}%)")
             print(f"  Buy (2): {self.action_counts[2]} ({self.action_counts[2]/total_actions*100:.1f}%)")
             print(f"  Total: {total_actions} actions")
 
-        # Compute metrics
-        returns = np.diff(self.net_assets) / self.net_assets[:-1]
-        print(f"DEBUG: Returns array: {returns}")
-        print(f"DEBUG: Returns mean: {np.mean(returns)}")
-        print(f"DEBUG: Returns std: {np.std(returns)}")
-        print(f"DEBUG: Contains NaN: {np.isnan(returns).any()}")
-        print(f"DEBUG: Contains Inf: {np.isinf(returns).any()}")
-        final_sharpe_ratio = sharpe_ratio(returns)
-        final_max_drawdown = max_drawdown(returns)
-        final_roma = return_over_max_drawdown(returns)
+        # FIXED: Compute metrics using ground truth portfolio values
+        if len(true_net_assets) > 1:
+            returns = np.diff(true_net_assets) / np.array(true_net_assets[:-1])
+            
+            print(f"\n🔍 HONEST Portfolio Analysis (Corrected for Lookahead Bias):")
+            print(f"   Starting portfolio value: ${true_net_assets[0]:,.2f}")
+            print(f"   Final portfolio value: ${true_net_assets[-1]:,.2f}")
+            print(f"   Total return: {(true_net_assets[-1] / true_net_assets[0] - 1)*100:.2f}%")
+            print(f"   Number of returns: {len(returns)}")
+            print(f"   Returns mean: {np.mean(returns):.6f}")
+            print(f"   Returns std: {np.std(returns):.6f}")
+            print(f"   Contains NaN: {np.isnan(returns).any()}")
+            print(f"   Contains Inf: {np.isinf(returns).any()}")
+            
+            # Calculate corrected performance metrics
+            final_sharpe_ratio = sharpe_ratio(returns)
+            final_max_drawdown = max_drawdown(returns)
+            final_roma = return_over_max_drawdown(returns)
 
-        print(f"Sharpe Ratio: {final_sharpe_ratio}")
-        print(f"Max Drawdown: {final_max_drawdown}")
-        print(f"Return over Max Drawdown: {final_roma}")
+            print(f"\n📊 CORRECTED Performance Metrics:")
+            print(f"   Sharpe Ratio: {final_sharpe_ratio:.4f}")
+            print(f"   Max Drawdown: {final_max_drawdown:.4f}")
+            print(f"   Return over Max Drawdown: {final_roma:.4f}")
+            
+            # Reality check on results
+            if final_sharpe_ratio > 2.5:
+                print(f"⚠️  WARNING: Sharpe ratio ({final_sharpe_ratio:.2f}) still unusually high - may need further investigation")
+            elif final_sharpe_ratio > 0:
+                print(f"✅ Sharpe ratio ({final_sharpe_ratio:.2f}) within realistic range")
+            else:
+                print(f"📉 Negative Sharpe ratio ({final_sharpe_ratio:.2f}) - strategy underperforming")
+        else:
+            print(f"❌ Error: Insufficient portfolio history for metrics calculation")
+            final_sharpe_ratio = final_max_drawdown = final_roma = 0.0
         
         # Print ensemble performance summary
         self._print_ensemble_summary()
