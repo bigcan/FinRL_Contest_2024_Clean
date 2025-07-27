@@ -126,10 +126,11 @@ class Task1HPOSearchSpace:
             'net_dims_1': trial.suggest_int('net_dims_1', 64, 512, step=64),
             'net_dims_2': trial.suggest_int('net_dims_2', 64, 512, step=64),
             
-            # Learning parameters
+            # Learning parameters - ENHANCED EXPLORATION RANGES
             'learning_rate': trial.suggest_float('learning_rate', 1e-6, 1e-3, log=True),
             'gamma': trial.suggest_float('gamma', 0.99, 0.999),
-            'explore_rate': trial.suggest_float('explore_rate', 0.001, 0.1, log=True),
+            'explore_rate': trial.suggest_float('explore_rate', 0.01, 0.3, log=True),  # Increased from 0.001-0.1
+            'min_explore_rate': trial.suggest_float('min_explore_rate', 0.005, 0.05),  # New: minimum exploration
             
             # Training parameters
             'batch_size': trial.suggest_categorical('batch_size', [128, 256, 512, 1024]),
@@ -146,6 +147,23 @@ class Task1HPOSearchSpace:
             'step_gap': trial.suggest_int('step_gap', 1, 5),
             'slippage': trial.suggest_float('slippage', 1e-8, 1e-5, log=True),
             'max_position': trial.suggest_int('max_position', 1, 3),
+            
+            # NEW: Reward component weights for multi-objective optimization
+            'reward_type': trial.suggest_categorical('reward_type', ['multi_objective', 'adaptive_multi_objective']),
+            'conservatism_penalty_weight': trial.suggest_float('conservatism_penalty_weight', 0.01, 0.5),
+            'action_diversity_weight': trial.suggest_float('action_diversity_weight', 0.05, 0.3),
+            'transaction_cost_weight': trial.suggest_float('transaction_cost_weight', 0.1, 1.0),
+            'risk_adjusted_return_weight': trial.suggest_float('risk_adjusted_return_weight', 0.3, 1.0),
+            
+            # NEW: Dynamic penalty parameters
+            'conservatism_escalation_rate': trial.suggest_float('conservatism_escalation_rate', 1.0, 2.0),
+            'activity_threshold': trial.suggest_float('activity_threshold', 0.2, 0.5),
+            'regime_sensitivity': trial.suggest_float('regime_sensitivity', 0.5, 2.0),
+            
+            # NEW: Exploration strategy parameters
+            'exploration_decay_rate': trial.suggest_float('exploration_decay_rate', 0.99, 0.999),
+            'exploration_warmup_steps': trial.suggest_int('exploration_warmup_steps', 1000, 10000),
+            'force_exploration_probability': trial.suggest_float('force_exploration_probability', 0.01, 0.1),
         }
     
     @staticmethod

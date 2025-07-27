@@ -9,7 +9,8 @@ from erl_config import Config
 from erl_replay_buffer import ReplayBuffer
 from erl_per_buffer import PrioritizedReplayBuffer
 from erl_net import QNetTwin, QNetTwinDuel
-from erl_noisy_net import QNetTwinNoisy, QNetTwinDuelNoisy 
+from erl_noisy_net import QNetTwinNoisy, QNetTwinDuelNoisy
+from erl_exploration import ExplorationOrchestrator, AdaptiveEpsilonGreedy 
 
 
 def get_optim_param(optimizer: torch.optim) -> list:  # backup
@@ -61,6 +62,30 @@ class AgentDoubleDQN:
 
         self.act_target = self.cri_target = deepcopy(self.act)
         self.act.explore_rate = getattr(args, "explore_rate", 1 / 32)
+        
+        # Enhanced exploration parameters
+        self.min_explore_rate = getattr(args, "min_explore_rate", 0.01)
+        self.exploration_decay_rate = getattr(args, "exploration_decay_rate", 0.995)
+        self.exploration_warmup_steps = getattr(args, "exploration_warmup_steps", 5000)
+        self.force_exploration_probability = getattr(args, "force_exploration_probability", 0.05)
+        self.total_exploration_steps = 0
+        
+        # Action diversity tracking
+        self.action_history = []
+        self.action_diversity_window = 100
+        
+        # Initialize exploration orchestrator
+        self.exploration_orchestrator = ExplorationOrchestrator(
+            strategies=[
+                AdaptiveEpsilonGreedy(
+                    initial_epsilon=self.act.explore_rate,
+                    min_epsilon=self.min_explore_rate,
+                    decay_rate=self.exploration_decay_rate,
+                    warmup_steps=self.exploration_warmup_steps
+                )
+            ],
+            action_dim=self.action_dim
+        )
 
     def get_obj_critic(self, buffer: ReplayBuffer, batch_size: int) -> Tuple[Tensor, Tensor]:
         """
@@ -102,6 +127,43 @@ class AgentDoubleDQN:
             elif os.path.isfile(file_path):
                 setattr(self, attr_name, torch.load(file_path, map_location=self.device, weights_only=False))
 
+    def update_exploration_rate(self):
+        """Update exploration rate with adaptive scheduling"""
+        if self.total_exploration_steps < self.exploration_warmup_steps:
+            # Warmup phase: maintain high exploration
+            return
+            
+        # Decay exploration rate
+        current_rate = self.act.explore_rate
+        new_rate = max(self.min_explore_rate, current_rate * self.exploration_decay_rate)
+        
+        # Check action diversity and adjust if needed
+        if len(self.action_history) >= self.action_diversity_window:
+            recent_actions = self.action_history[-self.action_diversity_window:]
+            unique_actions = len(set(recent_actions))
+            diversity_ratio = unique_actions / self.action_dim
+            
+            # If diversity is too low, boost exploration
+            if diversity_ratio < 0.5:  # Less than 50% of actions being used
+                new_rate = min(0.3, new_rate * 1.5)  # Boost exploration
+                print(f"⚠️ Low action diversity detected ({diversity_ratio:.2f}), boosting exploration to {new_rate:.3f}")
+                
+        self.act.explore_rate = new_rate
+        
+    def should_force_exploration(self) -> bool:
+        """Determine if we should force exploration based on recent behavior"""
+        if len(self.action_history) < 50:
+            return False
+            
+        recent_actions = self.action_history[-50:]
+        hold_ratio = recent_actions.count(1) / len(recent_actions)  # Assuming 1 is hold
+        
+        # Force exploration if too conservative
+        if hold_ratio > 0.8:  # More than 80% hold actions
+            return np.random.random() < self.force_exploration_probability * 2  # Double probability
+        else:
+            return np.random.random() < self.force_exploration_probability
+
     def explore_env(self, env, horizon_len: int, if_random: bool = False) -> Tuple[Tensor, ...]:
         """
         Collect trajectories through the actor-environment interaction for a **vectorized** environment instance.
@@ -122,17 +184,41 @@ class AgentDoubleDQN:
 
         state = self.last_state  # last_state.shape = (num_envs, state_dim) for a vectorized env.
 
+        # Update exploration rate periodically
+        if self.total_exploration_steps % 1000 == 0:
+            self.update_exploration_rate()
+
         # Use online network for exploration to get most up-to-date policy
         get_action = self.act.get_action
         for t in range(horizon_len):
-            action = torch.randint(self.action_dim, size=(self.num_envs, 1)) if if_random \
-                else get_action(state).detach()  # different
+            # Force exploration if needed
+            force_explore = self.should_force_exploration() and not if_random
+            
+            if if_random or force_explore:
+                action = torch.randint(self.action_dim, size=(self.num_envs, 1))
+                if force_explore and t == 0:  # Log only once per horizon
+                    print(f"🎲 Forcing exploration due to conservative behavior")
+            else:
+                action = get_action(state).detach()  # different
+                
             states[t] = state
 
             state, reward, done, _ = env.step(action)  # next_state
             actions[t] = action
             rewards[t] = reward
             dones[t] = done
+            
+            # Track actions for diversity monitoring
+            if self.num_envs == 1:
+                self.action_history.append(action.item())
+            else:
+                self.action_history.extend(action.cpu().numpy().flatten().tolist())
+            
+            # Keep action history bounded
+            if len(self.action_history) > self.action_diversity_window * 2:
+                self.action_history = self.action_history[-self.action_diversity_window:]
+                
+            self.total_exploration_steps += self.num_envs
 
         self.last_state = state
 

@@ -190,13 +190,14 @@ class TradeSimulator:
         self.stop_loss_thresh = 1e-3
         
         """Enhanced Reward System - addresses profitability issues"""
-        # Default to multi_objective for best performance, can be overridden
+        # Default to adaptive_multi_objective for best performance, can be overridden
         self.reward_calculator = create_reward_calculator(
-            reward_type="multi_objective",
+            reward_type="adaptive_multi_objective",
             lookback_window=100,
-            device=str(self.device)
+            device=str(self.device),
+            reward_weights=None  # Will use defaults, can be overridden
         )
-        self.reward_type = "multi_objective"  # Track current reward type
+        self.reward_type = "adaptive_multi_objective"  # Track current reward type
 
     def _validate_data_alignment(self):
         """
@@ -474,19 +475,22 @@ class TradeSimulator:
             )
             return state
     
-    def set_reward_type(self, reward_type: str):
+    def set_reward_type(self, reward_type: str, reward_weights: Optional[Dict[str, float]] = None):
         """
         Change the reward calculation method
         
         Args:
-            reward_type: "simple", "transaction_cost_adjusted", "sharpe_adjusted", "multi_objective"
+            reward_type: "simple", "transaction_cost_adjusted", "sharpe_adjusted", 
+                        "multi_objective", "adaptive_multi_objective"
+            reward_weights: Optional custom weights for multi-objective rewards
         """
-        if reward_type != self.reward_type:
+        if reward_type != self.reward_type or reward_weights is not None:
             print(f"🎯 Switching reward type from '{self.reward_type}' to '{reward_type}'")
             self.reward_calculator = create_reward_calculator(
                 reward_type=reward_type,
                 lookback_window=100,
-                device=str(self.device)
+                device=str(self.device),
+                reward_weights=reward_weights
             )
             self.reward_type = reward_type
     
