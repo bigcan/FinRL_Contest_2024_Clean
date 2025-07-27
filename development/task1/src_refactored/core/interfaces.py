@@ -100,6 +100,27 @@ class ExplorationProtocol(Protocol):
 
 
 @runtime_checkable
+class TrainingProtocol(Protocol):
+    """Protocol for training orchestration."""
+    
+    def train(self, config: Any) -> Any:
+        """Train the agent/ensemble with given configuration."""
+        ...
+    
+    def evaluate(self, episodes: int) -> Dict[str, Any]:
+        """Evaluate performance over given episodes."""
+        ...
+    
+    def save_checkpoint(self, path: str) -> None:
+        """Save training checkpoint."""
+        ...
+    
+    def load_checkpoint(self, path: str) -> None:
+        """Load training checkpoint."""
+        ...
+
+
+@runtime_checkable
 class OptimizerProtocol(Protocol):
     """Protocol for optimizer wrappers."""
     

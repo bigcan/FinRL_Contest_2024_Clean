@@ -1,7 +1,7 @@
 {
-  "best_value": 0.0,
-  "best_trial_number": 1,
-  "n_trials": 6,
-  "study_name": "task1_quick_hpo_20250726_111019",
+  "best_value": -Infinity,
+  "best_trial_number": 4,
+  "n_trials": 173,
+  "study_name": "finrl_enhanced_v3_20250726_232947",
   "direction": "MAXIMIZE"
 }

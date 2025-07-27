@@ -529,7 +529,7 @@ class AgentAdaptiveDQN(AgentDoubleDQN):
             factor=getattr(args, "lr_factor", 0.8)
         )
         
-        if self.cri_optimizer \!= self.act_optimizer:
+        if self.cri_optimizer != self.act_optimizer:
             cri_lr_scheduler = AdaptiveLRScheduler(
                 self.cri_optimizer,
                 strategy=self.lr_strategy,
@@ -553,7 +553,7 @@ class AgentAdaptiveDQN(AgentDoubleDQN):
             cri_lr_scheduler,
             grad_clip_norm=self.clip_grad_norm,
             adaptive_grad_clip=self.adaptive_grad_clip
-        ) if self.cri_optimizer \!= self.act_optimizer else self.adaptive_act_optimizer
+        ) if self.cri_optimizer != self.act_optimizer else self.adaptive_act_optimizer
     
     def optimizer_update(self, optimizer: torch.optim, objective: Tensor):
         """Override optimizer update to use adaptive features"""
@@ -595,7 +595,7 @@ class AgentAdaptiveDQN(AgentDoubleDQN):
         if if_save:
             if hasattr(self, "adaptive_cri_optimizer"):
                 torch.save(self.adaptive_cri_optimizer.state_dict(), f"{cwd}/adaptive_cri_optimizer.pth")
-            if hasattr(self, "adaptive_act_optimizer") and self.adaptive_act_optimizer \!= self.adaptive_cri_optimizer:
+            if hasattr(self, "adaptive_act_optimizer") and self.adaptive_act_optimizer != self.adaptive_cri_optimizer:
                 torch.save(self.adaptive_act_optimizer.state_dict(), f"{cwd}/adaptive_act_optimizer.pth")
         else:
             cri_path = f"{cwd}/adaptive_cri_optimizer.pth"
@@ -603,6 +603,6 @@ class AgentAdaptiveDQN(AgentDoubleDQN):
                 self.adaptive_cri_optimizer.load_state_dict(torch.load(cri_path, map_location=self.device))
                 
             act_path = f"{cwd}/adaptive_act_optimizer.pth"
-            if os.path.isfile(act_path) and hasattr(self, "adaptive_act_optimizer") and self.adaptive_act_optimizer \!= self.adaptive_cri_optimizer:
+            if os.path.isfile(act_path) and hasattr(self, "adaptive_act_optimizer") and self.adaptive_act_optimizer != self.adaptive_cri_optimizer:
                 self.adaptive_act_optimizer.load_state_dict(torch.load(act_path, map_location=self.device))
 

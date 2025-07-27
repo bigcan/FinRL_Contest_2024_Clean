@@ -17,26 +17,14 @@ Example usage:
         OptimizerFactory,
         create_adaptive_optimizer
     )
-    
-    # Create optimizer with adaptive scheduling
-    optimizer = OptimizerFactory.create_adamw(model.parameters(), lr=1e-3)
-    
-    scheduler_config = {
-        'strategy': 'cosine_annealing',
-        'T_max': 10000,
-        'eta_min': 1e-8
-    }
-    
-    adaptive_optimizer = create_adaptive_optimizer(
-        optimizer, 
-        scheduler_config,
-        {'grad_clip_norm': 1.0, 'adaptive_grad_clip': True}
-    )
-    
-    # Use gradient clipping
-    clipper = GradientClipper(method='adaptive', percentile=95.0)
-    grad_norm = clipper.clip_gradients(model.parameters())
 """
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from typing import Dict, List, Any, Optional, Union, Callable
+from dataclasses import dataclass
+import numpy as np
 
 # Base optimizer components
 from .base_optimizers import (

@@ -14,10 +14,10 @@ from collections import deque
 
 from .base_ensemble import BaseEnsemble, EnsembleStrategy
 from ..core.types import StateType, ActionType, TrainingStats
-from ..networks.base_networks import BaseNetwork
+from ..networks.base_networks import QNetBase
 
 
-class MetaLearnerNetwork(BaseNetwork):
+class MetaLearnerNetwork(QNetBase):
     """
     Meta-learner network for stacking ensemble.
     

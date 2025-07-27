@@ -30,16 +30,26 @@ class BaseAgent(ABC):
     - Basic statistics tracking
     """
     
-    def __init__(self, config: AgentConfig, device: Optional[torch.device] = None):
+    def __init__(self, config: AgentConfig, state_dim: int = None, action_dim: int = None, device: Optional[torch.device] = None):
         """
         Initialize base agent.
         
         Args:
             config: Agent configuration
+            state_dim: State space dimensionality (optional, can be in config)
+            action_dim: Action space dimensionality (optional, can be in config)
             device: PyTorch device (auto-detected if None)
         """
         self.config = config
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
+        # Set dimensions from parameters or config
+        self.state_dim = state_dim or getattr(config, 'state_dim', None)
+        self.action_dim = action_dim or getattr(config, 'action_dim', None)
+        
+        # Training mode
+        self.training = True
+        self.training_mode = True
         
         # Core components (to be set by subclasses)
         self.network: Optional[NetworkProtocol] = None
@@ -58,8 +68,8 @@ class BaseAgent(ABC):
         self.last_stats: Optional[TrainingStats] = None
         
         # Network update frequency
-        self.target_update_freq = config.network_config.__dict__.get('target_update_freq', 1000)
-        self.soft_update_tau = 0.005  # For soft updates
+        self.target_update_freq = getattr(config, 'target_update_freq', 1000)
+        self.soft_update_tau = getattr(config, 'soft_update_tau', 0.005)
         
         print(f"Initialized {self.__class__.__name__} on device: {self.device}")
     

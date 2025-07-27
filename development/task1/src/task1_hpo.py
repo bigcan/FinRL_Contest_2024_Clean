@@ -27,7 +27,7 @@ if os.name == 'nt':  # Windows only
 
 # Import existing modules
 from task1_ensemble import run, Ensemble
-from erl_agent import AgentD3QN, AgentDoubleDQN, AgentTwinD3QN
+from erl_agent import AgentD3QN, AgentDoubleDQN, AgentPrioritizedDQN
 from hpo_config import (
     HPOConfig, 
     Task1HPOSearchSpace, 
@@ -77,7 +77,7 @@ class Task1HPOOptimizer:
         self.agent_mapping = {
             'AgentD3QN': AgentD3QN,
             'AgentDoubleDQN': AgentDoubleDQN,
-            'AgentTwinD3QN': AgentTwinD3QN
+            'AgentPrioritizedDQN': AgentPrioritizedDQN
         }
     
     def setup_logging(self):
@@ -381,7 +381,7 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description='Task 1 Hyperparameter Optimization')
-    parser.add_argument('--config', type=str, default='quick', 
+    parser.add_argument('--config', type=str, default='production', 
                        choices=['quick', 'thorough', 'production'],
                        help='HPO configuration type')
     parser.add_argument('--metric', type=str, default='sharpe_ratio',
@@ -391,6 +391,24 @@ def main():
                        help='Base path for HPO experiments')
     parser.add_argument('--resume', action='store_true',
                        help='Resume from existing study')
+    parser.add_argument('--n-trials', type=int, default=None,
+                       help='Number of trials (overrides config default)')
+    parser.add_argument('--study-name', type=str, default=None,
+                       help='Custom study name')
+    parser.add_argument('--timeout', type=int, default=None,
+                       help='Timeout in seconds')
+    parser.add_argument('--n-jobs', type=int, default=1,
+                       help='Number of parallel jobs')
+    parser.add_argument('--sampler', type=str, default='tpe',
+                       help='Optuna sampler type')
+    parser.add_argument('--pruner', type=str, default='median',
+                       help='Optuna pruner type')
+    parser.add_argument('--save-dir', type=str, default=None,
+                       help='Save directory for results')
+    parser.add_argument('--gpu-id', type=int, default=0,
+                       help='GPU ID to use')
+    parser.add_argument('--db-name', type=str, default=None,
+                       help='Database name for study storage')
     
     args = parser.parse_args()
     
@@ -398,16 +416,31 @@ def main():
     hpo_configs = create_hpo_configs()
     hpo_config = hpo_configs[args.config]
     
-    if not args.resume:
+    # Override configuration with command line arguments
+    if args.n_trials:
+        hpo_config.n_trials = args.n_trials
+    if args.timeout:
+        hpo_config.timeout = args.timeout
+    if args.study_name:
+        hpo_config.study_name = args.study_name
+    elif not args.resume:
         # Create new study name with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         hpo_config.study_name = f"{hpo_config.study_name}_{timestamp}"
+    
+    # Update database name if provided
+    if args.db_name:
+        db_path = os.path.join("archived_experiments", "hpo_databases", args.db_name)
+        hpo_config.storage_url = create_sqlite_storage(db_path)
+    
+    if not args.resume:
         hpo_config.load_if_exists = False
     
     # Create optimizer
+    save_path = args.save_dir if args.save_dir else args.base_path
     optimizer = Task1HPOOptimizer(
         hpo_config=hpo_config,
-        base_save_path=args.base_path,
+        base_save_path=save_path,
         evaluation_metric=args.metric,
         use_pruning=True,
         intermediate_reporting=True

@@ -359,7 +359,7 @@ def suggest_ensemble_agents(trial: optuna.Trial) -> List[str]:
         List of agent class names
     """
     # Define available agents
-    available_agents = ['AgentD3QN', 'AgentDoubleDQN', 'AgentTwinD3QN']
+    available_agents = ['AgentD3QN', 'AgentDoubleDQN', 'AgentPrioritizedDQN']
     
     # Suggest number of agents in ensemble
     n_agents = trial.suggest_int('n_ensemble_agents', 2, 4)

@@ -86,6 +86,52 @@ class DoubleDQNAgent(BaseDQNAgent):
             'replay_type': 'Uniform',
             'exploration_type': 'Epsilon-greedy',
         }
+    
+    def _compute_loss(self, batch):
+        """
+        Compute Double DQN loss with proper action selection/evaluation separation.
+        
+        Args:
+            batch: Batch of experiences (states, actions, rewards, next_states, dones)
+            
+        Returns:
+            Tuple of (loss_tensor, metrics_dict)
+        """
+        states, actions, rewards, next_states, dones = batch
+        
+        # Current Q-values
+        q1_current, q2_current = self.online_network.get_q1_q2(states)
+        q1_selected = q1_current.gather(1, actions.unsqueeze(1)).squeeze(1)
+        q2_selected = q2_current.gather(1, actions.unsqueeze(1)).squeeze(1)
+        
+        # Double DQN target computation
+        with torch.no_grad():
+            # Action selection with online network
+            q1_next_online, q2_next_online = self.online_network.get_q1_q2(next_states)
+            next_actions = torch.min(q1_next_online, q2_next_online).argmax(dim=1, keepdim=True)
+            
+            # Q-value evaluation with target network
+            q1_next_target, q2_next_target = self.target_network.get_q1_q2(next_states)
+            next_q_values = torch.min(q1_next_target, q2_next_target).gather(1, next_actions).squeeze(1)
+            
+            # Compute targets
+            targets = rewards + self.config.gamma * next_q_values * (1 - dones)
+        
+        # Compute loss for both networks
+        loss1 = torch.nn.functional.mse_loss(q1_selected, targets)
+        loss2 = torch.nn.functional.mse_loss(q2_selected, targets)
+        total_loss = loss1 + loss2
+        
+        # Metrics for monitoring
+        metrics = {
+            'loss': total_loss.item(),
+            'loss_q1': loss1.item(),
+            'loss_q2': loss2.item(),
+            'q_mean': torch.mean(torch.min(q1_current, q2_current)).item(),
+            'target_mean': targets.mean().item(),
+        }
+        
+        return total_loss, metrics
 
 
 class D3QNAgent(BaseDQNAgent):
@@ -184,6 +230,63 @@ class D3QNAgent(BaseDQNAgent):
             'replay_type': 'Uniform',
             'exploration_type': 'Epsilon-greedy',
         }
+    
+    def _compute_loss(self, batch):
+        """
+        Compute D3QN loss with dueling architecture and Double DQN targets.
+        
+        Args:
+            batch: Batch of experiences (states, actions, rewards, next_states, dones)
+            
+        Returns:
+            Tuple of (loss_tensor, metrics_dict)
+        """
+        states, actions, rewards, next_states, dones = batch
+        
+        # Current Q-values from dueling networks
+        q1_current, q2_current = self.online_network.get_q1_q2(states)
+        q1_selected = q1_current.gather(1, actions.unsqueeze(1)).squeeze(1)
+        q2_selected = q2_current.gather(1, actions.unsqueeze(1)).squeeze(1)
+        
+        # Double DQN target computation with dueling networks
+        with torch.no_grad():
+            # Action selection with online dueling network
+            q1_next_online, q2_next_online = self.online_network.get_q1_q2(next_states)
+            next_actions = torch.min(q1_next_online, q2_next_online).argmax(dim=1, keepdim=True)
+            
+            # Q-value evaluation with target dueling network
+            q1_next_target, q2_next_target = self.target_network.get_q1_q2(next_states)
+            next_q_values = torch.min(q1_next_target, q2_next_target).gather(1, next_actions).squeeze(1)
+            
+            # Compute targets
+            targets = rewards + self.config.gamma * next_q_values * (1 - dones)
+        
+        # Compute loss for both dueling networks
+        loss1 = torch.nn.functional.mse_loss(q1_selected, targets)
+        loss2 = torch.nn.functional.mse_loss(q2_selected, targets)
+        total_loss = loss1 + loss2
+        
+        # Enhanced metrics for dueling architecture
+        metrics = {
+            'loss': total_loss.item(),
+            'loss_q1': loss1.item(),
+            'loss_q2': loss2.item(),
+            'q_mean': torch.mean(torch.min(q1_current, q2_current)).item(),
+            'target_mean': targets.mean().item(),
+        }
+        
+        # Add value/advantage analysis if possible
+        try:
+            val1, adv1, val2, adv2 = self.get_value_advantage_estimates(states)
+            metrics.update({
+                'value_mean': (val1.mean() + val2.mean()).item() / 2,
+                'advantage_mean': (adv1.mean() + adv2.mean()).item() / 2,
+                'advantage_std': (adv1.std() + adv2.std()).item() / 2,
+            })
+        except Exception:
+            pass  # Skip if value/advantage extraction fails
+        
+        return total_loss, metrics
 
 
 # Factory function for easy agent creation
