@@ -10,7 +10,7 @@ import torch
 import numpy as np
 from erl_config import Config, build_env
 from trade_simulator import TradeSimulator, EvalTradeSimulator
-from erl_agent import AgentD3QN, AgentDoubleDQN, AgentTwinD3QN
+from erl_agent import AgentD3QN, AgentDoubleDQN, AgentPrioritizedDQN, AgentNoisyDQN, AgentNoisyDuelDQN, AgentRainbowDQN, AgentAdaptiveDQN
 from collections import Counter
 from metrics import sharpe_ratio, max_drawdown, return_over_max_drawdown
 
@@ -150,8 +150,8 @@ class EnsembleEvaluator:
                 actions.append(action)
                 q_values_list.append(tensor_q_values.detach().cpu())
                 
-                # Store action history for this agent
-                self.agent_performance['action_history'][i].append(action.item())
+                # Store action history for this agent (take first element from batch)
+                self.agent_performance['action_history'][i].append(action[0].item())
 
             # Enhanced ensemble action with Q-values
             action, selected_agent_idx = self._ensemble_action(
@@ -160,10 +160,31 @@ class EnsembleEvaluator:
                 method=self.ensemble_method, 
                 step_idx=step_idx
             )
-            action_int = action.item() - 1
+            action_int = action[0].item() - 1
+            
+            # DEBUG: Track actions and positions
+            if step_idx < 10 or step_idx % 500 == 0:  # Print first 10 steps and every 500 steps
+                print(f"DEBUG Step {step_idx}: Raw action={action[0].item()}, action_int={action_int}")
+                if hasattr(trade_env, 'position'):
+                    old_position = trade_env.position[0].item() if hasattr(trade_env.position, 'item') else trade_env.position[0]
+                    print(f"DEBUG Step {step_idx}: Position before={old_position}")
 
             state, reward, done, _ = trade_env.step(action=action)
-            reward_value = reward.item() if torch.is_tensor(reward) else reward
+            reward_value = reward[0].item() if torch.is_tensor(reward) else reward
+            
+            # DEBUG: Track position changes and rewards
+            if step_idx < 10 or step_idx % 500 == 0:
+                if hasattr(trade_env, 'position'):
+                    new_position = trade_env.position[0].item() if hasattr(trade_env.position, 'item') else trade_env.position[0] 
+                    print(f"DEBUG Step {step_idx}: Position after={new_position}, reward={reward_value}")
+                if hasattr(trade_env, 'asset'):
+                    asset_value = trade_env.asset[0].item() if hasattr(trade_env.asset, 'item') else trade_env.asset[0]
+                    print(f"DEBUG Step {step_idx}: Asset value={asset_value}")
+                    
+            # Track action distribution
+            if not hasattr(self, 'action_counts'):
+                self.action_counts = {0: 0, 1: 0, 2: 0}  # sell, hold, buy
+            self.action_counts[action[0].item()] += 1
             
             # Track individual agent performance and update ensemble
             self._update_agent_performance(reward_value, selected_agent_idx, step_idx, actions, q_values_list)
@@ -213,8 +234,22 @@ class EnsembleEvaluator:
         np.save("evaluation_btc_positions.npy", np.array(self.btc_assets))
         np.save("evaluation_correct_predictions.npy", np.array(correct_pred))
 
+        # DEBUG: Print action distribution
+        if hasattr(self, 'action_counts'):
+            total_actions = sum(self.action_counts.values())
+            print(f"DEBUG: Action Distribution:")
+            print(f"  Sell (0): {self.action_counts[0]} ({self.action_counts[0]/total_actions*100:.1f}%)")
+            print(f"  Hold (1): {self.action_counts[1]} ({self.action_counts[1]/total_actions*100:.1f}%)")
+            print(f"  Buy (2): {self.action_counts[2]} ({self.action_counts[2]/total_actions*100:.1f}%)")
+            print(f"  Total: {total_actions} actions")
+
         # Compute metrics
         returns = np.diff(self.net_assets) / self.net_assets[:-1]
+        print(f"DEBUG: Returns array: {returns}")
+        print(f"DEBUG: Returns mean: {np.mean(returns)}")
+        print(f"DEBUG: Returns std: {np.std(returns)}")
+        print(f"DEBUG: Contains NaN: {np.isnan(returns).any()}")
+        print(f"DEBUG: Contains Inf: {np.isinf(returns).any()}")
         final_sharpe_ratio = sharpe_ratio(returns)
         final_max_drawdown = max_drawdown(returns)
         final_roma = return_over_max_drawdown(returns)
@@ -283,7 +318,7 @@ class EnsembleEvaluator:
             price_change = (current_price - self.last_price) / self.last_price
             
             for i, action in enumerate(actions):
-                action_val = action.item() - 1  # Convert to -1, 0, 1
+                action_val = action[0].item() - 1  # Convert to -1, 0, 1
                 agent_return = action_val * price_change  # Simulate agent-specific return
                 self.agent_performance['returns'][i].append(agent_return)
                 
@@ -380,10 +415,10 @@ class EnsembleEvaluator:
         
         if method == 'majority_voting':
             # Original simple majority voting
-            count = Counter([a.item() for a in actions])
+            count = Counter([a[0].item() for a in actions])
             majority_action, _ = count.most_common(1)[0]
             # Find which agent contributed (first match)
-            selected_idx = next((i for i, a in enumerate(actions) if a.item() == majority_action), None)
+            selected_idx = next((i for i, a in enumerate(actions) if a[0].item() == majority_action), None)
             return torch.tensor([[majority_action]], dtype=torch.int32), selected_idx
             
         elif method == 'weighted_voting':
@@ -400,9 +435,9 @@ class EnsembleEvaluator:
             
         else:
             # Fallback to majority voting
-            count = Counter([a.item() for a in actions])
+            count = Counter([a[0].item() for a in actions])
             majority_action, _ = count.most_common(1)[0]
-            selected_idx = next((i for i, a in enumerate(actions) if a.item() == majority_action), None)
+            selected_idx = next((i for i, a in enumerate(actions) if a[0].item() == majority_action), None)
             return torch.tensor([[majority_action]], dtype=torch.int32), selected_idx
     
     def _weighted_voting(self, actions, q_values=None):
@@ -778,7 +813,7 @@ if __name__ == "__main__":
     print(f"⚖️  Weight decay: {args.weight_decay}")
     print(f"🔍 Verbose logging: {args.verbose}")
     
-    agent_list = [AgentD3QN, AgentDoubleDQN, AgentTwinD3QN]
+    agent_list = [AgentD3QN, AgentDoubleDQN, AgentPrioritizedDQN]
     run_evaluation(
         save_path, 
         agent_list, 

@@ -80,13 +80,14 @@ class TradeSimulator:
             self.factor_ary = np.load(args.predict_ary_path)
             self.feature_names = []
             
-        self.factor_ary = th.tensor(self.factor_ary, dtype=th.float32)  # CPU
+        self.factor_ary = th.tensor(self.factor_ary, dtype=th.float32, device=self.device)  # Move to correct device
 
         data_df = pd.read_csv(args.csv_path)  # CSV READ HERE
 
         self.price_ary = data_df[["bids_distance_3", "asks_distance_3", "midpoint"]].values
         self.price_ary[:, 0] = self.price_ary[:, 2] * (1 + self.price_ary[:, 0])
         self.price_ary[:, 1] = self.price_ary[:, 2] * (1 + self.price_ary[:, 1])
+        self.price_ary = th.tensor(self.price_ary, dtype=th.float32, device=self.device)  # Move to correct device
 
         """
         DATA ALIGNMENT LOGIC - CRITICAL FOR PROPER FUNCTIONING
@@ -133,7 +134,7 @@ class TradeSimulator:
         # Current rear alignment implementation
         self.price_ary = self.price_ary[-self.factor_ary.shape[0] :, :]
 
-        self.price_ary = th.tensor(self.price_ary, dtype=th.float32)  # CPU
+        self.price_ary = th.tensor(self.price_ary, dtype=th.float32, device=self.device)  # Move to correct device
 
         self.seq_len = 3600
         self.full_seq_len = self.price_ary.shape[0]
@@ -145,7 +146,7 @@ class TradeSimulator:
             
             # Truncate data to safe_data_length (using rear alignment to keep most recent data)
             if safe_data_length < self.full_seq_len:
-                self.factor_ary = self.factor_ary[-safe_data_length:]
+                self.factor_ary = self.factor_ary[-safe_data_length:].contiguous()
                 self.price_ary = self.price_ary[-safe_data_length:]
                 self.full_seq_len = safe_data_length
                 print(f"TradeSimulator: Limited data length to {safe_data_length} samples")
@@ -320,7 +321,7 @@ class TradeSimulator:
         max_valid_index = self.full_seq_len - 1
         step_is = th.clamp(step_is, 0, max_valid_index)
         
-        state = self.get_state(step_is_cpu=step_is.to(th.device("cpu")))
+        state = self.get_state(step_is_cpu=step_is)
         return state
 
     def _step(self, action, _if_random=True):
@@ -331,7 +332,7 @@ class TradeSimulator:
         max_valid_index = self.full_seq_len - 1
         step_is = th.clamp(step_is, 0, max_valid_index)
         
-        step_is_cpu = step_is.to(th.device("cpu"))
+        step_is_cpu = step_is
 
         action = action.squeeze(1).to(self.device)
         action_int = action - 1  # map (0, 1, 2) to (-1, 0, +1), means (sell, nothing, buy)
@@ -343,9 +344,9 @@ class TradeSimulator:
         old_position = self.position
 
         # the data in price_ary is ['bid', 'ask', 'mid']
-        # bid_price = self.price_ary[step_is_cpu, 0].to(self.device)
-        # ask_price = self.price_ary[step_is_cpu, 1].to(self.device)
-        mid_price = self.price_ary[step_is_cpu, 2].to(self.device)
+        # bid_price = self.price_ary[step_is_cpu, 0]
+        # ask_price = self.price_ary[step_is_cpu, 1]
+        mid_price = self.price_ary[step_is_cpu, 2]
 
         """get action_int"""
         truncated = self.step_i >= (self.max_step * self.step_gap)
@@ -443,17 +444,27 @@ class TradeSimulator:
         return self._step(action, _if_random=True)
 
     def get_state(self, step_is_cpu):
-        factor_ary = self.factor_ary[step_is_cpu, :].to(self.device)
+        # Ensure step_is_cpu is a tensor for proper indexing
+        if not isinstance(step_is_cpu, th.Tensor):
+            step_is_cpu = th.tensor(step_is_cpu, dtype=th.long, device=self.device)
+        
+        # Index factor_ary - already on correct device
+        factor_ary = self.factor_ary[step_is_cpu, :]
+        
+        # Ensure factor_ary is 2D
+        if factor_ary.dim() == 1:
+            factor_ary = factor_ary.unsqueeze(0)
         
         # If enhanced features, update position features in-place
         if hasattr(self, 'feature_names') and len(self.feature_names) > 0:
             # Enhanced features: position features are at indices 0 and 1
+            factor_ary = factor_ary.clone()  # Clone to avoid in-place modification issues
             factor_ary[:, 0] = self.position.float() / self.max_position
             factor_ary[:, 1] = self.holding.float() / self.max_holding
             return factor_ary
         else:
             # Original features: concatenate position features
-            return th.concat(
+            state = th.concat(
                 (
                     (self.position.float() / self.max_position)[:, None],
                     (self.holding.float() / self.max_holding)[:, None],
@@ -461,6 +472,7 @@ class TradeSimulator:
                 ),
                 dim=1,
             )
+            return state
     
     def set_reward_type(self, reward_type: str):
         """
@@ -512,7 +524,7 @@ class EvalTradeSimulator(TradeSimulator):
         
         # Use the last portion of data for evaluation (out-of-sample)
         split_idx = int(len(self.factor_ary) * eval_split)
-        self.factor_ary = self.factor_ary[split_idx:]
+        self.factor_ary = self.factor_ary[split_idx:].contiguous()
         self.price_ary = self.price_ary[split_idx:]
         
         # CRITICAL: Update full_seq_len after data truncation

@@ -1,0 +1,24 @@
+{
+  "net_dims": [
+    128,
+    192,
+    512
+  ],
+  "learning_rate": 3.8484087690375695e-06,
+  "gamma": 0.992870155898603,
+  "explore_rate": 0.0020709444182654383,
+  "batch_size": 256,
+  "buffer_size_multiplier": 5,
+  "horizon_len_multiplier": 3,
+  "repeat_times": 3,
+  "soft_update_tau": 1.8565332906069057e-05,
+  "state_value_tau": 0.0051173679311549754,
+  "num_sims": 32,
+  "step_gap": 3,
+  "slippage": 2.4431694087565755e-06,
+  "max_position": 1,
+  "n_ensemble_agents": 3,
+  "agent_0": "AgentPrioritizedDQN",
+  "agent_1": "AgentPrioritizedDQN",
+  "agent_2": "AgentPrioritizedDQN"
+}
