@@ -70,10 +70,11 @@ class QNetTwinDuel(QNetBase):  # D3QN: Dueling Double DQN
     def __init__(self, dims: [int], state_dim: int, action_dim: int):
         super().__init__(state_dim=state_dim, action_dim=action_dim)
         self.net_state = build_mlp(dims=[state_dim, *dims])
-        self.net_adv1 = build_mlp(dims=[dims[-1], 1])  # advantage value 1
-        self.net_val1 = build_mlp(dims=[dims[-1], action_dim])  # Q value 1
-        self.net_adv2 = build_mlp(dims=[dims[-1], 1])  # advantage value 2
-        self.net_val2 = build_mlp(dims=[dims[-1], action_dim])  # Q value 2
+        # Fixed architecture: advantage per action, value per state
+        self.net_adv1 = build_mlp(dims=[dims[-1], action_dim])  # advantage per action 1
+        self.net_val1 = build_mlp(dims=[dims[-1], 1])  # state value 1  
+        self.net_adv2 = build_mlp(dims=[dims[-1], action_dim])  # advantage per action 2
+        self.net_val2 = build_mlp(dims=[dims[-1], 1])  # state value 2
         self.soft_max = nn.Softmax(dim=1)
 
         layer_init_with_orthogonal(self.net_adv1[-1], std=0.1)
@@ -84,35 +85,54 @@ class QNetTwinDuel(QNetBase):  # D3QN: Dueling Double DQN
     def forward(self, state):
         state = self.state_norm(state)
         s_enc = self.net_state(state)  # encoded state
-        q_val = self.net_val1(s_enc)  # q value
-        q_adv = self.net_adv1(s_enc)  # advantage value
-        value = q_val - q_val.mean(dim=1, keepdim=True) + q_adv  # one dueling Q value
+        # Corrected dueling formula: Q(s,a) = V(s) + (A(s,a) - mean(A(s)))
+        q_adv = self.net_adv1(s_enc)  # advantage per action [batch_size, action_dim]
+        q_val = self.net_val1(s_enc)  # state value [batch_size, 1]
+        value = q_val + (q_adv - q_adv.mean(dim=1, keepdim=True))  # dueling Q value
         value = self.value_re_norm(value)
         return value
 
     def get_q1_q2(self, state):
         state = self.state_norm(state)
         s_enc = self.net_state(state)  # encoded state
-
-        q_val1 = self.net_val1(s_enc)  # q value 1
-        q_adv1 = self.net_adv1(s_enc)  # advantage value 1
-        q_duel1 = q_val1 - q_val1.mean(dim=1, keepdim=True) + q_adv1
+        
+        # Stream 1: Q(s,a) = V(s) + (A(s,a) - mean(A(s)))
+        q_adv1 = self.net_adv1(s_enc)  # advantage per action 1 [batch_size, action_dim]
+        q_val1 = self.net_val1(s_enc)  # state value 1 [batch_size, 1]
+        
+        # Shape validation for debugging
+        assert q_adv1.shape[-1] == self.action_dim, f"Advantage shape mismatch: expected [*, {self.action_dim}], got {q_adv1.shape}"
+        assert q_val1.shape[-1] == 1, f"Value shape mismatch: expected [*, 1], got {q_val1.shape}"
+        assert q_adv1.shape[0] == q_val1.shape[0], f"Batch size mismatch: adv={q_adv1.shape[0]}, val={q_val1.shape[0]}"
+        
+        q_duel1 = q_val1 + (q_adv1 - q_adv1.mean(dim=1, keepdim=True))
         q_duel1 = self.value_re_norm(q_duel1)
 
-        q_val2 = self.net_val2(s_enc)  # q value 2
-        q_adv2 = self.net_adv2(s_enc)  # advantage value 2
-        q_duel2 = q_val2 - q_val2.mean(dim=1, keepdim=True) + q_adv2
+        # Stream 2: Q(s,a) = V(s) + (A(s,a) - mean(A(s)))
+        q_adv2 = self.net_adv2(s_enc)  # advantage per action 2 [batch_size, action_dim]
+        q_val2 = self.net_val2(s_enc)  # state value 2 [batch_size, 1]
+        
+        # Shape validation for debugging
+        assert q_adv2.shape[-1] == self.action_dim, f"Advantage2 shape mismatch: expected [*, {self.action_dim}], got {q_adv2.shape}"
+        assert q_val2.shape[-1] == 1, f"Value2 shape mismatch: expected [*, 1], got {q_val2.shape}"
+        assert q_adv2.shape[0] == q_val2.shape[0], f"Batch size mismatch: adv2={q_adv2.shape[0]}, val2={q_val2.shape[0]}"
+        
+        q_duel2 = q_val2 + (q_adv2 - q_adv2.mean(dim=1, keepdim=True))
         q_duel2 = self.value_re_norm(q_duel2)
         return q_duel1, q_duel2  # two dueling Q values
 
     def get_action(self, state):
         state = self.state_norm(state)
         s_enc = self.net_state(state)  # encoded state
-        q_val = self.net_val1(s_enc)  # q value
+        # Use the corrected dueling formula for action selection
+        q_adv = self.net_adv1(s_enc)  # advantage per action [batch_size, action_dim]
+        q_val = self.net_val1(s_enc)  # state value [batch_size, 1]
+        q_values = q_val + (q_adv - q_adv.mean(dim=1, keepdim=True))  # dueling Q values
+        
         if self.explore_rate < torch.rand(1):
-            action = q_val.argmax(dim=1, keepdim=True)
+            action = q_values.argmax(dim=1, keepdim=True)
         else:
-            # a_prob = self.soft_max(q_val)
+            # a_prob = self.soft_max(q_values)
             # action = torch.multinomial(a_prob, num_samples=1)
             action = torch.randint(self.action_dim, size=(state.shape[0], 1))
         return action
