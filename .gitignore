@@ -68,6 +68,15 @@ Thumbs.db
 *.log
 logs/
 
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Archive directories
+archived_results/
+hpo_experiments/
+
 # Temporary files
 *.tmp
 *.temp
