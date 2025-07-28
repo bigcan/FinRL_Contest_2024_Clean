@@ -11,6 +11,11 @@ This is the FinRL Contest 2024 repository for the ACM ICAIF 2024 competition, fe
 ## Development Principles
 
 - No mock models or fallback plans or shortcuts unless explicitly approved by the user
+- **IMPORTANT**: Update README.md files after each development phase to maintain accurate documentation
+  - Update main project README with major changes
+  - Update task-specific READMEs with implementation details
+  - Document critical bug fixes, new features, and architectural changes
+  - Include update logs with dates at the top of README files
 
 ## Commands
 
@@ -244,3 +249,68 @@ Here's a systematic approach to optimizing reward functions in reinforcement lea
          need to adapt over time.
        * Risk Management: Explicitly incorporate risk metrics and penalties into the
          reward function to prevent overly aggressive or risky behavior.
+
+## Development Guidance
+
+### Coding Principles
+
+- Only use emojis if the user explicitly requests it. Avoid using emojis in all communication unless asked.
+
+## Data Analysis & Verification Protocol
+
+**CRITICAL**: Always follow this systematic approach when answering questions about data, features, or implementation details to prevent inaccurate responses.
+
+### Systematic Data Exploration Protocol
+
+**BEFORE answering data-related questions:**
+
+1. **Comprehensive File Discovery**
+   ```bash
+   # List ALL relevant files first
+   ls -la data/raw/task1/*.npy
+   find . -name "*feature*" -type f
+   # Check for versions (_v1, _v2, _enhanced, _optimized)
+   ```
+
+2. **Systematic Version Analysis**
+   ```python
+   # Check EVERY version systematically
+   for file in [base, enhanced, v2, v3, optimized]:
+       print(f"{file}: shape, metadata, contents")
+   ```
+
+3. **Cross-Reference Multiple Sources**
+   - Check code references to understand which version is active
+   - Compare metadata across versions
+   - Verify naming conventions (original_ vs existing_)
+
+### Verification Checklist
+
+**Before providing definitive answers:**
+
+- [ ] Have I checked ALL relevant data files?
+- [ ] Have I identified which version is currently used?
+- [ ] Does my answer align with user hints/expectations?
+- [ ] Am I looking at the right naming convention?
+- [ ] Have I shown my investigation process?
+- [ ] Should I qualify this answer with uncertainty?
+
+### Answer Structure Requirements
+
+**Always structure responses as:**
+
+1. **Investigation Process**: "Let me systematically check all available data files..."
+2. **Evidence Presentation**: Show what was found in each relevant source
+3. **Version Comparison**: Highlight differences between versions
+4. **Qualified Conclusion**: State findings with appropriate confidence level
+5. **Uncertainty Acknowledgment**: Note any remaining ambiguities
+
+### Common Error Patterns to Avoid
+
+- **Single-Source Conclusions**: Never answer based on first file found
+- **Version Assumptions**: Don't assume latest = current in production
+- **Speed Over Accuracy**: Take time for thorough investigation
+- **Definitive Claims**: Qualify answers when data is ambiguous
+- **Ignoring User Hints**: User expectations often reveal investigation gaps
+
+**Remember**: It's better to say "Let me check all versions systematically" than to provide a quick but inaccurate answer.
