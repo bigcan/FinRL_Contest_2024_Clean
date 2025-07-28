@@ -183,13 +183,9 @@ class Task1HPOOptimizer:
             Tuple of (success, metrics)
         """
         try:
-            # Set GPU ID (use trial number modulo available GPUs)
-            if torch.cuda.is_available():
-                n_gpus = torch.cuda.device_count()
-                gpu_id = trial.number % n_gpus
-                config_dict['gpu_id'] = gpu_id
-            else:
-                config_dict['gpu_id'] = -1  # CPU
+            # Force CPU for HPO to avoid device mismatch issues
+            # HPO trials are for evaluation testing, not performance
+            config_dict['gpu_id'] = -1  # CPU only
             
             # Reduce training steps for HPO (faster trials)
             config_dict['break_step'] = min(config_dict.get('break_step', 16), 8)
@@ -238,18 +234,68 @@ class Task1HPOOptimizer:
                 with open(eval_results_path, 'r') as f:
                     return json.load(f)
             
-            # If no evaluation results, run quick evaluation
+            # Run evaluation and compute metrics from saved results
             from task1_eval import run_evaluation
+            from metrics import sharpe_ratio, max_drawdown, return_over_max_drawdown
+            import numpy as np
             
-            metrics = run_evaluation(
-                ensemble_path=ensemble_path,
-                quick_eval=True  # Faster evaluation for HPO
-            )
+            # Change to ensemble directory for evaluation
+            original_cwd = os.getcwd()
+            try:
+                os.chdir(ensemble_path)
+                
+                # Run evaluation (this saves results to current directory)  
+                run_evaluation(
+                    save_path=".",  # Current directory
+                    agent_list=[AgentD3QN, AgentDoubleDQN, AgentPrioritizedDQN],
+                    ensemble_method='majority_voting'
+                )
+                
+                # Load the saved evaluation results
+                net_assets_path = "evaluation_net_assets.npy"
+                if os.path.exists(net_assets_path):
+                    true_net_assets = np.load(net_assets_path)
+                    
+                    if len(true_net_assets) > 1:
+                        returns = np.diff(true_net_assets) / np.array(true_net_assets[:-1])
+                        
+                        # Calculate metrics
+                        final_sharpe_ratio = sharpe_ratio(returns)
+                        final_max_drawdown = max_drawdown(returns)
+                        final_roma = return_over_max_drawdown(returns)
+                        total_return = (true_net_assets[-1] / true_net_assets[0] - 1)
+                        
+                        metrics = {
+                            'sharpe_ratio': float(final_sharpe_ratio),
+                            'total_return': float(total_return),
+                            'max_drawdown': float(final_max_drawdown),
+                            'romad': float(final_roma)
+                        }
+                        
+                        # Save metrics for future use
+                        with open("evaluation_results.json", 'w') as f:
+                            import json
+                            json.dump(metrics, f)
+                        
+                        self.logger.info(f"HPO Evaluation metrics: Sharpe={metrics['sharpe_ratio']:.4f}, Return={metrics['total_return']:.4f}")
+                        return metrics
+                
+            finally:
+                os.chdir(original_cwd)
             
-            return metrics
+            # Fallback if evaluation files not found
+            self.logger.warning("Could not load evaluation results from files")
+            return {
+                'sharpe_ratio': 0.0,
+                'total_return': 0.0,
+                'max_drawdown': 0.0,
+                'romad': 0.0
+            }
             
         except Exception as e:
             self.logger.error(f"Ensemble evaluation failed: {str(e)}")
+            import traceback
+            self.logger.error(f"Full traceback: {traceback.format_exc()}")
             return {
                 'sharpe_ratio': 0.0,
                 'total_return': 0.0,

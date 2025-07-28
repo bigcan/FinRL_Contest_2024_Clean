@@ -385,6 +385,8 @@ class EnsembleEvaluator:
                     if returns_std > 0:
                         sharpe = rolling_return / returns_std * np.sqrt(252)  # Annualized
                         self.performance_metrics['rolling_sharpe'][i].append(sharpe)
+                    else:
+                        self.performance_metrics['rolling_sharpe'][i].append(0.0)
                 
                 # Win rate
                 recent_predictions = self.agent_performance['correct_predictions'][i][-window:]

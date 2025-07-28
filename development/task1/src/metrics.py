@@ -23,7 +23,7 @@ def sharpe_ratio(returns_pct, risk_free=0):
     """
     returns = np.array(returns_pct)
     if returns.std() == 0:
-        sharpe_ratio = np.inf
+        sharpe_ratio = 0.0
     else:
         sharpe_ratio = (returns.mean()-risk_free) / returns.std()
     return sharpe_ratio
