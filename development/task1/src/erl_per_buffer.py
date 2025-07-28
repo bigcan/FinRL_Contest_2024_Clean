@@ -159,8 +159,9 @@ class PrioritizedReplayBuffer:
         Returns:
             states, actions, rewards, undones, next_states, indices, weights
         """
-        sample_len = self.cur_size - 1
-        if sample_len <= 0:
+        # CRITICAL FIX: Reserve space for next_state access
+        sample_len = max(1, self.cur_size - 2)  # Ensures ids0 + 1 < cur_size
+        if sample_len <= 0 or self.cur_size < 2:
             # Fallback to uniform sampling if buffer is too small
             return self._uniform_sample(batch_size)
             
@@ -224,7 +225,8 @@ class PrioritizedReplayBuffer:
     
     def _uniform_sample(self, batch_size: int) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Fallback uniform sampling when buffer is small or priorities are invalid"""
-        sample_len = max(1, self.cur_size - 1)
+        # CRITICAL FIX: Reserve space for next_state access
+        sample_len = max(1, self.cur_size - 2)
         
         ids = torch.randint(sample_len * self.num_seqs, size=(batch_size,), device=self.device)
         ids0 = torch.fmod(ids, sample_len)
@@ -247,7 +249,8 @@ class PrioritizedReplayBuffer:
         priorities = priorities.detach().cpu().numpy()
         indices = indices.detach().cpu().numpy()
         
-        sample_len = self.cur_size - 1
+        # CRITICAL FIX: Use same sample_len as in sampling
+        sample_len = max(1, self.cur_size - 2)
         
         for i, priority in zip(indices, priorities):
             seq_idx = i // sample_len

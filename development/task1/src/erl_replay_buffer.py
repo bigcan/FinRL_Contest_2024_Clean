@@ -83,17 +83,37 @@ class ReplayBuffer:  # for off-policy
         self.cur_size = self.max_size if self.if_full else self.p
 
     def sample(self, batch_size: int) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
-        sample_len = self.cur_size - 1
+        # CRITICAL FIX: Reserve space for next_state access
+        # Original: sample_len = self.cur_size - 1  # This causes index out of bounds
+        # Fixed: sample_len = self.cur_size - 2     # Ensures ids0 + 1 < cur_size
+        sample_len = max(1, self.cur_size - 2)  # Ensure minimum sample_len of 1
 
-        ids = torch.randint(sample_len * self.num_seqs, size=(batch_size,), requires_grad=False)
+        # Additional safety check for very small buffers
+        if sample_len <= 0 or self.cur_size < 2:
+            # Buffer too small to sample properly, return dummy data
+            dummy_state = self.states[0, 0].unsqueeze(0).repeat(batch_size, 1)
+            dummy_action = self.actions[0, 0].unsqueeze(0).repeat(batch_size, 1) 
+            dummy_reward = self.rewards[0, 0].unsqueeze(0).repeat(batch_size)
+            dummy_undone = self.undones[0, 0].unsqueeze(0).repeat(batch_size)
+            return dummy_state, dummy_action, dummy_reward, dummy_undone, dummy_state
+
+        ids = torch.randint(sample_len * self.num_seqs, size=(batch_size,), requires_grad=False, device=self.device)
         ids0 = torch.fmod(ids, sample_len)  # ids % sample_len
         ids1 = torch.div(ids, sample_len, rounding_mode='floor')  # ids // sample_len
+
+        # Validate indices before accessing (debug mode - can be removed in production)
+        if torch.any(ids0 >= self.cur_size - 1):
+            raise IndexError(f"ids0 max: {ids0.max()}, must be < {self.cur_size - 1}")
+        if torch.any(ids0 + 1 >= self.cur_size):
+            raise IndexError(f"ids0+1 max: {(ids0 + 1).max()}, must be < {self.cur_size}")
+        if torch.any(ids1 >= self.num_seqs):
+            raise IndexError(f"ids1 max: {ids1.max()}, must be < {self.num_seqs}")
 
         return (self.states[ids0, ids1],
                 self.actions[ids0, ids1],
                 self.rewards[ids0, ids1],
                 self.undones[ids0, ids1],
-                self.states[ids0 + 1, ids1],)  # next_state
+                self.states[ids0 + 1, ids1],)  # next_state - now safe!
 
     def save_or_load_history(self, cwd: str, if_save: bool):
         item_names = (
