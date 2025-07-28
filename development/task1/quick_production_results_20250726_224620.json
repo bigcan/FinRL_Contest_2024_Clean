@@ -1,0 +1,44 @@
+{
+  "start_time": 1753541180.7825406,
+  "device": "cuda",
+  "environment": {
+    "state_dim": 41,
+    "action_dim": 3,
+    "data_size": 823682,
+    "feature_type": "enhanced_v3",
+    "max_steps": 1000
+  },
+  "agents": {
+    "DoubleDQN_Quick": true,
+    "D3QN_Quick": true
+  },
+  "ensemble": {
+    "agents": 2,
+    "strategy": "weighted_vote"
+  },
+  "training": {
+    "DoubleDQN_Quick": {
+      "episodes": 20,
+      "initial_avg": 3.9446990470266767,
+      "final_avg": 6.856816466848834,
+      "improvement": 2.912117419822157,
+      "total_reward": 109.34037863121547
+    },
+    "D3QN_Quick": {
+      "episodes": 20,
+      "initial_avg": -8.75502168993663,
+      "final_avg": -7.879662692762094,
+      "improvement": 0.8753589971745361,
+      "total_reward": -134.67467266727667
+    }
+  },
+  "evaluation": {
+    "episodes": 10,
+    "mean_reward": 6.871197374169336,
+    "std_reward": 5.223110634126112,
+    "max_reward": 15.390806459120808,
+    "min_reward": 0.49637850756702206
+  },
+  "end_time": 1753541185.2089272,
+  "duration": 4.426386594772339
+}

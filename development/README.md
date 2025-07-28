@@ -1,11 +1,23 @@
 # Development Directory
 
-This directory contains all active development work for both Task 1 and Task 2.
+**Update Log (July 2025)**: This directory contains the production-ready implementation with critical bug fixes and enhancements.
+
+## Current Status
+
+### Active Development
+- **Task 1**: Production-ready with HPO, enhanced features, and critical lookahead bias fix
+- **Task 2**: Standard implementation for LLM signal generation
+- **Note**: The `src_refactored` folder in task1 is archived - use `src` only
 
 ## Structure
 
 ### `task1/` - Cryptocurrency Trading Development
-- **`src/`**: Modified source code from Task_1_starter_kit
+- **`src/`**: Production code with all enhancements and bug fixes
+  - Contains HPO implementation (`task1_hpo.py`)
+  - Fixed evaluation pipeline (`task1_eval.py`)
+  - Enhanced features and ensemble methods
+  - Archived experiments in `src/archived_experiments/`
+- **`src_refactored/`**: **ARCHIVED** - Experimental refactoring (do not use)
 - **`configs/`**: Experiment configurations and hyperparameters
 - **`models/`**: Trained ensemble models and checkpoints
 - **`scripts/`**: Training and evaluation scripts
@@ -16,7 +28,7 @@ This directory contains all active development work for both Task 1 and Task 2.
 - **`models/`**: Fine-tuned LLM models and LoRA adapters
 - **`scripts/`**: Training and evaluation scripts
 
-### `shared/` - Common Utilities
+### `shared/` - Common Utilities (if exists)
 - **`data_processing/`**: Data preprocessing and feature engineering
 - **`evaluation/`**: Shared evaluation metrics and tools
 - **`utils/`**: Common helper functions and utilities

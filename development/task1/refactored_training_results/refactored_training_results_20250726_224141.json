@@ -1,0 +1,138 @@
+{
+  "training_start": 1753540901.530222,
+  "device": "cuda",
+  "timestamp": "20250726_224141",
+  "agents": {
+    "DoubleDQN_Refactored": {
+      "type": "DoubleDQNAgent",
+      "config": {
+        "agent_type": "AgentDoubleDQN",
+        "net_dims": [
+          512,
+          512,
+          256
+        ],
+        "gamma": 0.995,
+        "learning_rate": 0.0001,
+        "batch_size": 256,
+        "repeat_times": 2,
+        "reward_scale": 1.0,
+        "clip_grad_norm": 10.0,
+        "soft_update_tau": 0.005,
+        "state_value_tau": 0.01,
+        "explore_rate": 0.01,
+        "if_off_policy": true
+      },
+      "parameters": 447440,
+      "created": true
+    },
+    "D3QN_Refactored": {
+      "type": "D3QNAgent",
+      "config": {
+        "agent_type": "AgentD3QN",
+        "net_dims": [
+          512,
+          512,
+          512
+        ],
+        "gamma": 0.995,
+        "learning_rate": 8e-05,
+        "batch_size": 256,
+        "repeat_times": 2,
+        "reward_scale": 1.0,
+        "clip_grad_norm": 10.0,
+        "soft_update_tau": 0.005,
+        "state_value_tau": 0.01,
+        "explore_rate": 0.005,
+        "if_off_policy": true
+      },
+      "parameters": 581330,
+      "created": true
+    }
+  },
+  "ensemble": {
+    "created": true,
+    "strategy": "weighted_vote",
+    "num_agents": 2,
+    "agents": [
+      "DoubleDQN_Refactored",
+      "D3QN_Refactored"
+    ]
+  },
+  "comparison": {
+    "reward_improvement": -0.44454878041109924,
+    "success_rate_improvement": -0.45,
+    "refactored_performance": {
+      "episodes_evaluated": 20,
+      "mean_reward": -0.2945487804110993,
+      "std_reward": 1.0168647602288712,
+      "max_reward": 2.260973200875741,
+      "min_reward": -1.0958378247710687,
+      "final_10_avg": 0.062253816204945286,
+      "success_rate": 0.2
+    },
+    "original_performance": {
+      "mean_reward": 0.15,
+      "training_time": 1800,
+      "success_rate": 0.65,
+      "framework": "original"
+    }
+  },
+  "environment": {
+    "state_dim": 100,
+    "action_dim": 3,
+    "dataset_size": 5000,
+    "feature_type": "mock"
+  },
+  "training": {
+    "DoubleDQN_Refactored": {
+      "episodes_completed": 50,
+      "final_performance": -0.17927621402704794,
+      "improvement": 0.0,
+      "total_training_time": 35.762481927871704,
+      "avg_episode_time": 0.7152496385574341,
+      "episode_rewards": [
+        0.8527601703435286,
+        -0.9963727190912969,
+        2.0842614669778667,
+        -0.8799974591452387,
+        2.997899038353997,
+        -0.5902850736456857,
+        -0.4079990053624184,
+        -0.23500136109468056,
+        -0.6030258925347899,
+        0.6439801380407093
+      ]
+    },
+    "D3QN_Refactored": {
+      "episodes_completed": 50,
+      "final_performance": -0.4804223885824459,
+      "improvement": 0.0,
+      "total_training_time": 44.258546590805054,
+      "avg_episode_time": 0.8851709318161011,
+      "episode_rewards": [
+        -1.6815398577769216,
+        1.5910948475702935,
+        -0.8944076409944551,
+        -0.4898341577507309,
+        -0.7793853223447113,
+        0.017466464563229728,
+        0.17171433736902417,
+        -0.13773832891967222,
+        -0.39708390659646253,
+        -0.8944507408569051
+      ]
+    }
+  },
+  "evaluation": {
+    "episodes_evaluated": 20,
+    "mean_reward": -0.2945487804110993,
+    "std_reward": 1.0168647602288712,
+    "max_reward": 2.260973200875741,
+    "min_reward": -1.0958378247710687,
+    "final_10_avg": 0.062253816204945286,
+    "success_rate": 0.2
+  },
+  "training_end": 1753541008.0243,
+  "total_duration": 106.49407815933228
+}

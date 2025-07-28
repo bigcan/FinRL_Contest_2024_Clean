@@ -1,0 +1,15 @@
+{
+  "strategy": "EnsembleStrategy.WEIGHTED_VOTE",
+  "agents": [
+    "DoubleDQN_Production",
+    "D3QN_Production",
+    "DoubleDQN_Aggressive"
+  ],
+  "weights": {
+    "DoubleDQN_Production": 0.3333333333333333,
+    "D3QN_Production": 0.3333333333333333,
+    "DoubleDQN_Aggressive": 0.3333333333333333
+  },
+  "confidence_threshold": 0.5,
+  "created_at": "20250726_225353"
+}

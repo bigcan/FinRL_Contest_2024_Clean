@@ -1,0 +1,53 @@
+{
+  "start_time": 1753541759.6785378,
+  "device": "cuda",
+  "timestamp": "20250726_225559",
+  "framework": "refactored_with_original_integration",
+  "config": {
+    "state_dim": 41,
+    "action_dim": 3,
+    "max_step": 411811,
+    "data_length": 823682,
+    "feature_type": "enhanced_v3",
+    "env_args": {
+      "env_name": "TradeSimulator-v0",
+      "num_envs": 32,
+      "max_step": 411811,
+      "state_dim": 41,
+      "action_dim": 3,
+      "if_discrete": true,
+      "max_position": 1,
+      "slippage": 7e-07,
+      "num_sims": 32,
+      "step_gap": 2,
+      "gpu_id": 0
+    }
+  },
+  "agents": {
+    "EnhancedDoubleDQN": "DoubleDQNAgent",
+    "EnhancedD3QN": "D3QNAgent"
+  },
+  "ensemble": {
+    "created": true,
+    "strategy": "weighted_vote",
+    "num_agents": 2
+  },
+  "training": {
+    "EnhancedDoubleDQN": {
+      "episodes": 0,
+      "success": false,
+      "error": "No episodes completed"
+    },
+    "EnhancedD3QN": {
+      "episodes": 0,
+      "success": false,
+      "error": "No episodes completed"
+    }
+  },
+  "evaluation": {
+    "success": false,
+    "error": "No episodes completed"
+  },
+  "end_time": 1753541809.6085668,
+  "duration": 49.93002891540527
+}

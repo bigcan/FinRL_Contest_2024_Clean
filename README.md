@@ -1,3 +1,15 @@
+**Update Log (July 2025)**
+
+This repository contains significant enhancements and bug fixes beyond the original starter kit:
+
+1. **CRITICAL BUG FIX**: Fixed lookahead bias in evaluation pipeline that was inflating performance metrics
+2. **Hyperparameter Optimization (HPO)**: Implemented comprehensive HPO using Optuna framework
+3. **Enhanced Features**: Added advanced market microstructure features and ensemble methods
+4. **Production Code**: All active development is in `development/task1/src/` directory
+5. **Archived Code**: The `src_refactored` folder contains experimental refactoring (archived)
+
+For the latest implementation, please work in: `development/task1/src/`
+
 **New notes for clarifications**
 
 The basic requirement is that your model should be able to interact with the environment. The code for training agent and ensemble is just an example solution for your reference.
@@ -53,7 +65,7 @@ The starter kit includes:
 
 - `task1_eval.py`: This file contains code that loads your ensemble and simulates trading over a validation dataset. You may create this validation dataset by holding out a part of the training data.
 
-We will provide the evaluation code soon. 
+The evaluation code is provided in `task1_eval.py` with critical bug fixes applied. 
 
 **Notes:**
 The basic requirement is that your model should be able to interact with the environment. The code for training agent and ensemble is just an example solution for your reference. 

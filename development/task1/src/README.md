@@ -1,3 +1,33 @@
+**Update Log (July 2025) - Production Implementation**
+
+This directory contains the production-ready implementation with significant enhancements:
+
+### Critical Updates:
+1. **LOOKAHEAD BIAS FIX**: Fixed critical bug in `task1_eval.py` that was using future price information
+   - See `LOOKAHEAD_BIAS_CRITICAL_FIX.md` for details
+   - Performance metrics are now realistic (Sharpe ~0.14 instead of impossible 3.7)
+
+2. **Hyperparameter Optimization (HPO)**:
+   - Implemented in `task1_hpo.py` using Optuna
+   - Supports multiple optimization profiles (quick/thorough/production)
+   - See `hpo_config.py` for configuration options
+
+3. **Enhanced Features**:
+   - Advanced market microstructure features in `enhanced_features_v3.py`
+   - Multiple ensemble strategies: majority voting, weighted voting, confidence-based, adaptive meta-learning
+   - Additional agents: Rainbow DQN, Adaptive DQN, Noisy DQN
+
+4. **Key Files for Production Use**:
+   - `task1_hpo.py` - Run hyperparameter optimization
+   - `task1_ensemble.py` - Train ensemble models
+   - `task1_eval.py` - Evaluate models (with bias fix)
+   - `enhanced_training_v3.py` - Enhanced training with v3 features
+
+### Important Notes:
+- The `src_refactored` folder is archived - use this `src` folder only
+- All evaluation must use the fixed `task1_eval.py` to avoid lookahead bias
+- HPO databases are stored in `archived_experiments/hpo_databases/`
+
 **New notes for clarifications**
 
 The basic requirement is that your model should be able to interact with the environment. The code for training agent and ensemble is just an example solution for your reference.
@@ -26,6 +56,39 @@ We generate the strong RNN features by first training a RNN model on 60% of the 
 
 The `BTC_1sec.csv` contains all data used to train the RNN model and FinRL agent. Notice that the timestamps in this dataset has been processed and are not the true timestamps. 
 
+## Feature Engineering
+
+### Foundation: 101 Formulaic Alphas
+The dataset builds upon the 101 Formulaic Alphas from Kakushadze (2016), which provide a research-backed foundation of quantitative trading signals. These alphas capture diverse market patterns including:
+- Price and volume-based formulas
+- Momentum indicators  
+- Mean reversion signals
+- Moving averages
+- Volatility measures
+
+The original 101 alphas are processed through an RNN (LSTM+GRU) architecture to extract temporal dependencies, creating the base features stored in `BTC_1sec_predict.npy`.
+
+### Enhanced Feature Engineering
+Our custom feature engineering creates **complementary, non-duplicative** features that extend beyond the original 101 alphas:
+
+#### Dataset Evolution:
+- **`BTC_1sec_predict_optimized.npy`** (8 features): Optimized baseline from RNN-derived features
+- **`BTC_1sec_predict_enhanced_v2.npy`** (20 features): Added technical indicators and multi-timeframe analysis
+- **`BTC_1sec_predict_microstructure_v3.npy`** (23 features): Advanced microstructure features for LOB data
+
+#### Custom Features (Non-overlapping with 101 Alphas):
+1. **LOB Microstructure**: Order arrival rates, cancellation rates, price impact measures
+2. **Market Regime Detection**: Volatility clustering, regime identification
+3. **Advanced Transformations**: Fractional differentiation, GARCH volatility modeling
+4. **Time-based Features**: Cyclical encoding for intraday patterns
+5. **Statistical Measures**: Rolling z-scores, regime-adaptive normalization
+
+### Benefits of This Approach:
+- **Comprehensive Signal Coverage**: Combines proven quantitative factors with high-frequency microstructure signals
+- **Temporal Enhancement**: RNN processing captures sequential dependencies from static formulas
+- **Specialized for Crypto**: LOB-specific features not present in traditional alpha factors
+- **Feature Diversity**: Low correlation between alpha-derived and microstructure features
+
 ## Starter Kit Descriptions
 
 This starter kit demonstrates how to use the provided code. We provide you with RNN generated strong factors to use for the DRL agent. You are welcome to experiment with various ensemble configurations that yield optimal results. 
@@ -53,7 +116,7 @@ The starter kit includes:
 
 - `task1_eval.py`: This file contains code that loads your ensemble and simulates trading over a validation dataset. You may create this validation dataset by holding out a part of the training data.
 
-We will provide the evaluation code soon. 
+The evaluation code is provided in `task1_eval.py` with critical bug fixes applied. 
 
 **Notes:**
 The basic requirement is that your model should be able to interact with the environment. The code for training agent and ensemble is just an example solution for your reference. 
