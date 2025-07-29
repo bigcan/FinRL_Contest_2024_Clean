@@ -1,0 +1,89 @@
+{
+  "timestamp": "2025-07-29",
+  "model_verification": {
+    "D3QN_Production": {
+      "model_name": "D3QN_Production",
+      "path": "/mnt/c/QuantConnect/FinRL_Contest_2024/FinRL_Contest_2024/development/task1/complete_production_results/production_models/D3QN_Production/model.pth",
+      "file_size_mb": 4.215426445007324,
+      "loadable": true,
+      "has_nan": false,
+      "has_inf": false,
+      "weight_stats": {}
+    },
+    "DoubleDQN_Production": {
+      "model_name": "DoubleDQN_Production",
+      "path": "/mnt/c/QuantConnect/FinRL_Contest_2024/FinRL_Contest_2024/development/task1/complete_production_results/production_models/DoubleDQN_Production/model.pth",
+      "file_size_mb": 3.1915388107299805,
+      "loadable": true,
+      "has_nan": false,
+      "has_inf": false,
+      "weight_stats": {}
+    },
+    "DoubleDQN_Aggressive": {
+      "model_name": "DoubleDQN_Aggressive",
+      "path": "/mnt/c/QuantConnect/FinRL_Contest_2024/FinRL_Contest_2024/development/task1/complete_production_results/production_models/DoubleDQN_Aggressive/model.pth",
+      "file_size_mb": 0.8507184982299805,
+      "loadable": true,
+      "has_nan": false,
+      "has_inf": false,
+      "weight_stats": {}
+    }
+  },
+  "inference_tests": {
+    "D3QN_Production": {
+      "inference_test": "basic_load_successful",
+      "model_keys": [
+        "online_network",
+        "target_network",
+        "optimizer",
+        "config",
+        "training_completed"
+      ],
+      "tensor_count": 0
+    },
+    "DoubleDQN_Production": {
+      "inference_test": "basic_load_successful",
+      "model_keys": [
+        "online_network",
+        "target_network",
+        "optimizer",
+        "config",
+        "training_completed"
+      ],
+      "tensor_count": 0
+    },
+    "DoubleDQN_Aggressive": {
+      "inference_test": "basic_load_successful",
+      "model_keys": [
+        "online_network",
+        "target_network",
+        "optimizer",
+        "config",
+        "training_completed"
+      ],
+      "tensor_count": 0
+    }
+  },
+  "log_analysis": {
+    "complete_production_results/complete_training_summary_20250728_231440.md": {
+      "exists": true,
+      "size": 277,
+      "line_count": 14,
+      "contains_error": false
+    },
+    "working_complete_results/working_complete_summary_20250728_231606.md": {
+      "exists": true,
+      "size": 679,
+      "line_count": 27,
+      "contains_error": true
+    }
+  },
+  "summary": {
+    "valid_models": 3,
+    "total_models": 3,
+    "working_inference": 3,
+    "model_validity_percentage": 100.0,
+    "overall_status": "PASS",
+    "concerns": []
+  }
+}

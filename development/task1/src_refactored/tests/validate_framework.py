@@ -10,13 +10,31 @@ import torch
 import numpy as np
 from pathlib import Path
 
-# Add src_refactored to path
+# Add src_refactored to path for both relative and absolute imports
 test_dir = Path(__file__).parent
 src_dir = test_dir.parent
-if str(src_dir) not in sys.path:
-    sys.path.insert(0, str(src_dir))
+project_root = src_dir.parent
 
-from . import TEST_CONFIG
+# Add paths to sys.path for proper imports
+for path in [str(src_dir), str(project_root)]:
+    if path not in sys.path:
+        sys.path.insert(0, path)
+
+# Try importing TEST_CONFIG with fallback
+try:
+    from . import TEST_CONFIG
+except ImportError:
+    try:
+        from tests import TEST_CONFIG
+    except ImportError:
+        # Fallback configuration
+        TEST_CONFIG = {
+            'device': 'cpu',
+            'state_dim': 10,
+            'action_dim': 3,
+            'seed': 42,
+            'test_batch_size': 32
+        }
 
 
 def validate_imports():
@@ -24,35 +42,60 @@ def validate_imports():
     print("🔍 Validating imports...")
     
     try:
-        # Core components
-        from ..core.types import StateType, ActionType, TrainingStats
-        from ..core.base_agent import BaseAgent
-        from ..core.interfaces import NetworkProtocol, ReplayBufferProtocol
+        # Core components - try relative then absolute imports
+        try:
+            from ..core.types import StateType, ActionType, TrainingStats
+            from ..core.base_agent import BaseAgent
+            from ..core.interfaces import NetworkProtocol, ReplayBufferProtocol
+        except ImportError:
+            from core.types import StateType, ActionType, TrainingStats
+            from core.base_agent import BaseAgent
+            from core.interfaces import NetworkProtocol, ReplayBufferProtocol
         print("  ✅ Core components imported successfully")
         
         # Agent components
-        from ..agents import create_agent, create_ensemble_agents, AGENT_REGISTRY
-        from ..agents.base_dqn_agent import BaseDQNAgent
-        from ..agents.double_dqn_agent import DoubleDQNAgent, D3QNAgent
+        try:
+            from ..agents import create_agent, create_ensemble_agents, AGENT_REGISTRY
+            from ..agents.base_dqn_agent import BaseDQNAgent
+            from ..agents.double_dqn_agent import DoubleDQNAgent, D3QNAgent
+        except ImportError:
+            from agents import create_agent, create_ensemble_agents, AGENT_REGISTRY
+            from agents.base_dqn_agent import BaseDQNAgent
+            from agents.double_dqn_agent import DoubleDQNAgent, D3QNAgent
         print("  ✅ Agent components imported successfully")
         
         # Ensemble components
-        from ..ensemble import (
-            BaseEnsemble, EnsembleStrategy, VotingEnsemble, 
-            StackingEnsemble, create_ensemble
-        )
+        try:
+            from ..ensemble import (
+                BaseEnsemble, EnsembleStrategy, VotingEnsemble, 
+                StackingEnsemble, create_ensemble
+            )
+        except ImportError:
+            from ensemble import (
+                BaseEnsemble, EnsembleStrategy, VotingEnsemble, 
+                StackingEnsemble, create_ensemble
+            )
         print("  ✅ Ensemble components imported successfully")
         
         # Configuration components
-        from ..config import DoubleDQNConfig, PrioritizedDQNConfig
+        try:
+            from ..config import DoubleDQNConfig, PrioritizedDQNConfig
+        except ImportError:
+            from config import DoubleDQNConfig, PrioritizedDQNConfig
         print("  ✅ Configuration components imported successfully")
         
         # Network components
-        from ..networks import QNetTwin, QNetTwinDuel
+        try:
+            from ..networks import QNetTwin, QNetTwinDuel
+        except ImportError:
+            from networks import QNetTwin, QNetTwinDuel
         print("  ✅ Network components imported successfully")
         
         # Training components
-        from ..training.ensemble_trainer import EnsembleTrainer, TrainingConfig
+        try:
+            from ..training.ensemble_trainer import EnsembleTrainer, TrainingConfig
+        except ImportError:
+            from training.ensemble_trainer import EnsembleTrainer, TrainingConfig
         print("  ✅ Training components imported successfully")
         
         return True
@@ -67,7 +110,10 @@ def validate_agent_creation():
     print("\n🤖 Validating agent creation...")
     
     try:
-        from ..agents import create_agent, AGENT_REGISTRY
+        try:
+            from ..agents import create_agent, AGENT_REGISTRY
+        except ImportError:
+            from agents import create_agent, AGENT_REGISTRY
         
         device = torch.device(TEST_CONFIG['device'])
         
@@ -104,8 +150,12 @@ def validate_ensemble_creation():
     print("\n🤝 Validating ensemble creation...")
     
     try:
-        from ..agents import create_ensemble_agents
-        from ..ensemble import create_voting_ensemble, EnsembleStrategy
+        try:
+            from ..agents import create_ensemble_agents
+            from ..ensemble import create_voting_ensemble, EnsembleStrategy
+        except ImportError:
+            from agents import create_ensemble_agents
+            from ensemble import create_voting_ensemble, EnsembleStrategy
         
         device = torch.device(TEST_CONFIG['device'])
         
@@ -188,7 +238,10 @@ def validate_training_config():
     print("\n⚙️  Validating training configuration...")
     
     try:
-        from ..training.ensemble_trainer import TrainingConfig, TrainingResults
+        try:
+            from ..training import TrainingConfig, TrainingResults
+        except ImportError:
+            from training import TrainingConfig, TrainingResults
         
         # Test training config creation
         config = TrainingConfig(
@@ -219,8 +272,12 @@ def run_integration_test():
     print("\n🔗 Running integration test...")
     
     try:
-        from ..agents import create_agent
-        from .utils.mock_environment import MockEnvironment
+        try:
+            from ..agents import create_agent
+            from .utils.mock_environment import MockEnvironment
+        except ImportError:
+            from agents import create_agent
+            from tests.utils.mock_environment import MockEnvironment
         
         device = torch.device(TEST_CONFIG['device'])
         
