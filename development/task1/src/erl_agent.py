@@ -334,6 +334,16 @@ class AgentDoubleDQN:
         """
         optimizer.zero_grad()
         objective.backward()
+        
+        # CRITICAL DEBUG: Check device consistency before optimizer step
+        for i, param in enumerate(optimizer.param_groups[0]["params"]):
+            if param.grad is not None:
+                if param.device != param.grad.device:
+                    print(f"❌ DEVICE MISMATCH: param[{i}] device={param.device}, grad device={param.grad.device}")
+                    # Force move gradient to parameter device
+                    param.grad = param.grad.to(param.device)
+                    print(f"✅ Fixed gradient device to: {param.grad.device}")
+        
         clip_grad_norm_(parameters=optimizer.param_groups[0]["params"], max_norm=self.clip_grad_norm)
         optimizer.step()
 
