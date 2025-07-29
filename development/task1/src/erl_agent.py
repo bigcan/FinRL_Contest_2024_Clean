@@ -117,6 +117,10 @@ class AgentDoubleDQN:
         q1_out, q2_out = self.act.get_q1_q2(states)
         actions = actions.to(q1_out.device)
         q1, q2 = [qs.gather(1, actions.long()).squeeze(1) for qs in [q1_out, q2_out]]
+        
+        # CRITICAL FIX: Ensure q_labels is on same device as Q-values for loss calculation
+        q_labels = q_labels.to(q1.device)
+        
         obj_critic = self.criterion(q1, q_labels) + self.criterion(q2, q_labels)
         return obj_critic, q1
 
@@ -290,6 +294,10 @@ class AgentDoubleDQN:
         q_output = self.cri(states)
         actions = actions.to(q_output.device)
         q_values = q_output.gather(1, actions.long()).squeeze(1)
+        
+        # CRITICAL FIX: Ensure q_labels is on same device as Q-values for loss calculation
+        q_labels = q_labels.to(q_values.device)
+        
         obj_critic = self.criterion(q_values, q_labels)
         return obj_critic, q_values
 
@@ -594,6 +602,10 @@ class AgentRainbowDQN(AgentDoubleDQN):
         q1_out, q2_out = self.act.get_q1_q2(states)
         actions = actions.to(q1_out.device)
         q1, q2 = [qs.gather(1, actions.long()).squeeze(1) for qs in [q1_out, q2_out]]
+        
+        # CRITICAL FIX: Ensure q_labels is on same device as Q-values for loss calculation
+        q_labels = q_labels.to(q1.device)
+        
         obj_critic = self.criterion(q1, q_labels) + self.criterion(q2, q_labels)
         return obj_critic, q1
     
