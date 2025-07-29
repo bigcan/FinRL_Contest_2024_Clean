@@ -106,10 +106,17 @@ class AgentDoubleDQN:
             
             # Use target network for evaluation with selected actions
             next_q1_target, next_q2_target = self.cri_target.get_q1_q2(next_ss)
+            
+            # CRITICAL FIX: Ensure next_actions is on same device as target network tensors
+            next_actions = next_actions.to(next_q1_target.device)
+            
             next_qs = torch.min(next_q1_target, next_q2_target).gather(1, next_actions).squeeze(1)
             q_labels = rewards + undones * self.gamma * next_qs
 
-        q1, q2 = [qs.gather(1, actions.long()).squeeze(1) for qs in self.act.get_q1_q2(states)]
+        # CRITICAL FIX: Ensure actions is on same device as Q-network output
+        q1_out, q2_out = self.act.get_q1_q2(states)
+        actions = actions.to(q1_out.device)
+        q1, q2 = [qs.gather(1, actions.long()).squeeze(1) for qs in [q1_out, q2_out]]
         obj_critic = self.criterion(q1, q_labels) + self.criterion(q2, q_labels)
         return obj_critic, q1
 
@@ -279,7 +286,10 @@ class AgentDoubleDQN:
             next_qs = self.cri_target(next_ss).max(dim=1, keepdim=True)[0].squeeze(1)  # next q_values
             q_labels = rewards + undones * self.gamma * next_qs
 
-        q_values = self.cri(states).gather(1, actions.long()).squeeze(1)
+        # CRITICAL FIX: Ensure actions is on same device as critic network output
+        q_output = self.cri(states)
+        actions = actions.to(q_output.device)
+        q_values = q_output.gather(1, actions.long()).squeeze(1)
         obj_critic = self.criterion(q_values, q_labels)
         return obj_critic, q_values
 
@@ -395,11 +405,18 @@ class AgentPrioritizedDQN(AgentDoubleDQN):
             
             # Use target network for evaluation with selected actions
             next_q1_target, next_q2_target = self.cri_target.get_q1_q2(next_ss)
+            
+            # CRITICAL FIX: Ensure next_actions is on same device as target network tensors
+            next_actions = next_actions.to(next_q1_target.device)
+            
             next_qs = torch.min(next_q1_target, next_q2_target).gather(1, next_actions).squeeze(1)
             q_labels = rewards + undones * self.gamma * next_qs
 
         # Get current Q-values
-        q1, q2 = [qs.gather(1, actions.long()).squeeze(1) for qs in self.act.get_q1_q2(states)]
+        # CRITICAL FIX: Ensure actions is on same device as Q-network output
+        q1_out, q2_out = self.act.get_q1_q2(states)
+        actions = actions.to(q1_out.device)
+        q1, q2 = [qs.gather(1, actions.long()).squeeze(1) for qs in [q1_out, q2_out]]
         
         # Calculate TD errors for priority updates
         td_errors = torch.abs(q1 - q_labels) + torch.abs(q2 - q_labels)
@@ -573,7 +590,10 @@ class AgentRainbowDQN(AgentDoubleDQN):
             gamma_n = self.gamma ** self.n_step
             q_labels = rewards + undones * gamma_n * next_qs
 
-        q1, q2 = [qs.gather(1, actions.long()).squeeze(1) for qs in self.act.get_q1_q2(states)]
+        # CRITICAL FIX: Ensure actions is on same device as Q-network output
+        q1_out, q2_out = self.act.get_q1_q2(states)
+        actions = actions.to(q1_out.device)
+        q1, q2 = [qs.gather(1, actions.long()).squeeze(1) for qs in [q1_out, q2_out]]
         obj_critic = self.criterion(q1, q_labels) + self.criterion(q2, q_labels)
         return obj_critic, q1
     
