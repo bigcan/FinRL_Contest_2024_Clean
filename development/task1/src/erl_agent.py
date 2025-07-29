@@ -99,6 +99,13 @@ class AgentDoubleDQN:
         """
         with torch.no_grad():
             states, actions, rewards, undones, next_ss = buffer.sample(batch_size)
+            
+            # CRITICAL FIX: Ensure ALL sampled tensors are on correct device immediately
+            states = states.to(self.device)
+            actions = actions.to(self.device)
+            rewards = rewards.to(self.device)
+            undones = undones.to(self.device)
+            next_ss = next_ss.to(self.device)
 
             # Double DQN: use online network for action selection
             next_q1_online, next_q2_online = self.act.get_q1_q2(next_ss)
@@ -286,7 +293,14 @@ class AgentDoubleDQN:
         :return: the loss of the network and Q values.
         """
         with torch.no_grad():
-            states, actions, rewards, undones, next_ss = buffer.sample(batch_size)  # next_ss: next states
+            states, actions, rewards, undones, next_ss = buffer.sample(batch_size)
+            
+            # CRITICAL FIX: Ensure ALL sampled tensors are on correct device immediately
+            states = states.to(self.device)
+            actions = actions.to(self.device)
+            rewards = rewards.to(self.device)
+            undones = undones.to(self.device)
+            next_ss = next_ss.to(self.device)  # next_ss: next states
             next_qs = self.cri_target(next_ss).max(dim=1, keepdim=True)[0].squeeze(1)  # next q_values
             q_labels = rewards + undones * self.gamma * next_qs
 
@@ -586,6 +600,13 @@ class AgentRainbowDQN(AgentDoubleDQN):
         """Calculate loss with multi-step learning"""
         with torch.no_grad():
             states, actions, rewards, undones, next_ss = buffer.sample(batch_size)
+            
+            # CRITICAL FIX: Ensure ALL sampled tensors are on correct device immediately
+            states = states.to(self.device)
+            actions = actions.to(self.device)
+            rewards = rewards.to(self.device)
+            undones = undones.to(self.device)
+            next_ss = next_ss.to(self.device)
             
             # Double DQN with multi-step
             next_q1_online, next_q2_online = self.act.get_q1_q2(next_ss)
