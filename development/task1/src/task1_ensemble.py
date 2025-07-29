@@ -421,11 +421,13 @@ class Ensemble:
         # gpu_id = 0
         self.device = torch.device(f"cuda" if torch.cuda.is_available() else "cpu")
         eval_env_class = args.eval_env_class
-        eval_env_class.num_envs = 1
+        # Commented out: Let evaluation use same num_envs as training
+        # eval_env_class.num_envs = 1
 
         eval_env_args = args.eval_env_args
-        eval_env_args["num_envs"] = 1
-        eval_env_args["num_sims"] = 1
+        # Commented out: Let evaluation use same num_envs as training to avoid tensor shape mismatch
+        # eval_env_args["num_envs"] = 1
+        # eval_env_args["num_sims"] = 1
 
         self.trade_env = build_env(eval_env_class, eval_env_args, gpu_id=args.gpu_id)
 

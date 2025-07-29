@@ -177,29 +177,76 @@ def get_cumulative_rewards_and_step_from_vec_env(env, actor) -> List[Tuple[float
     positions = []
 
     state = env.reset()  # must reset in vectorized env
+    
+    # Ensure actor is on the same device
+    if hasattr(actor, 'to'):
+        actor = actor.to(device)
+    
     for t in range(max_step):
-        action = actor(state.to(device))
+        # Ensure both state and actor are on same device
+        state_tensor = state.to(device) if hasattr(state, 'to') else torch.tensor(state, device=device)
+        action = actor(state_tensor)
         # assert action.shape == (env.env_num, env.action_dim)
         if if_discrete:
             action = action.argmax(dim=1, keepdim=True)
         state, reward, done, info_dict = env.step(action)
+        
+        # Handle shape mismatch between expected env_num and actual reward shape
+        if isinstance(reward, torch.Tensor) and reward.shape[0] != env_num:
+            if env_num == 1 and len(reward.shape) > 0 and reward.shape[0] > 1:
+                # Environment returns vectorized rewards but we expect single env
+                reward = reward[0:1]
+                done = done[0:1]
+                if hasattr(state, 'shape') and len(state.shape) > 1 and state.shape[0] > 1:
+                    state = state[0:1]
+            else:
+                # Log warning about shape mismatch
+                print(f"Warning: reward shape {reward.shape} doesn't match env_num {env_num}")
 
         returns[t] = reward
         dones[t] = done
-        action_ints.append(env.action_int)
-        positions.append(env.position)
+        # Handle both single and vectorized environments
+        if hasattr(env, 'env_num') and env.env_num > 1:
+            # Vectorized environment: action_int and position are already tensors
+            action_ints.append(env.action_int)
+            positions.append(env.position)
+        else:
+            # Single environment: handle potential shape mismatch
+            if hasattr(env, 'action_int'):
+                action_int = env.action_int
+                position = env.position
+                # If these are tensors with wrong shape, take first element
+                if isinstance(action_int, torch.Tensor) and action_int.shape[0] > 1:
+                    action_int = action_int[0:1]
+                    position = position[0:1]
+                else:
+                    action_int = torch.tensor([action_int], device=device) if not isinstance(action_int, torch.Tensor) else action_int
+                    position = torch.tensor([position], device=device) if not isinstance(position, torch.Tensor) else position
+                action_ints.append(action_int)
+                positions.append(position)
 
-    action_ary = torch.concatenate(action_ints, dim=0)
-    action_ary = action_ary.float() # TODO for cpu only
-    action_count = torch.histc(action_ary, bins=2 + 1, min=-1, max=1)
-    action_count = action_count.data.cpu().numpy() / action_ary.shape[0]
-    action_count = np.ceil(action_count * 998).astype(np.int32)
+    # Ensure all tensors have same device and flatten properly
+    if action_ints:
+        action_ary = torch.concatenate(action_ints, dim=0)
+        if action_ary.dim() > 1:
+            action_ary = action_ary.flatten()
+        action_ary = action_ary.float()
+        action_count = torch.histc(action_ary, bins=2 + 1, min=-1, max=1)
+        action_count = action_count.data.cpu().numpy() / action_ary.shape[0]
+        action_count = np.ceil(action_count * 998).astype(np.int32)
+    else:
+        action_count = np.array([0, 0, 0])
 
-    position_ary = torch.concatenate(positions, dim=0)
-    position_ary = position_ary.float()
-    position_count = torch.histc(position_ary, bins=env.max_position * 2 + 1, min=-2, max=2)
-    position_count = position_count.data.cpu().numpy() / position_ary.shape[0]
-    position_count = np.ceil(position_count * 998).astype(np.int32)
+    if positions:
+        position_ary = torch.concatenate(positions, dim=0)
+        if position_ary.dim() > 1:
+            position_ary = position_ary.flatten()
+        position_ary = position_ary.float()
+        position_count = torch.histc(position_ary, bins=env.max_position * 2 + 1, min=-2, max=2)
+        position_count = position_count.data.cpu().numpy() / position_ary.shape[0]
+        position_count = np.ceil(position_count * 998).astype(np.int32)
+    else:
+        position_count = np.zeros(env.max_position * 2 + 1)
 
     print(';;;;;;', ' ' * (67 + len('[333. 218. 450.] [  0. 340. 185. 475.   0.]')),
           action_count, position_count)
