@@ -52,6 +52,7 @@ class AgentDoubleDQN:
         self.act_optimizer = torch.optim.AdamW(self.act.parameters(), self.learning_rate)
         self.cri_optimizer = torch.optim.AdamW(self.cri.parameters(), self.learning_rate) \
             if cri_class else self.act_optimizer
+            
         from types import MethodType  # built-in package of Python3
         self.act_optimizer.parameters = MethodType(get_optim_param, self.act_optimizer)
         self.cri_optimizer.parameters = MethodType(get_optim_param, self.cri_optimizer)
@@ -335,17 +336,24 @@ class AgentDoubleDQN:
         optimizer.zero_grad()
         objective.backward()
         
-        # CRITICAL DEBUG: Check device consistency before optimizer step
-        for i, param in enumerate(optimizer.param_groups[0]["params"]):
-            if param.grad is not None:
-                if param.device != param.grad.device:
-                    print(f"❌ DEVICE MISMATCH: param[{i}] device={param.device}, grad device={param.grad.device}")
-                    # Force move gradient to parameter device
-                    param.grad = param.grad.to(param.device)
-                    print(f"✅ Fixed gradient device to: {param.grad.device}")
+        # CRITICAL FIX: Ensure optimizer state is on correct device before step
+        self._fix_optimizer_device_consistency(optimizer)
         
         clip_grad_norm_(parameters=optimizer.param_groups[0]["params"], max_norm=self.clip_grad_norm)
         optimizer.step()
+        
+    def _fix_optimizer_device_consistency(self, optimizer):
+        """Ensure optimizer state tensors are on the same device as parameters"""
+        for param_group in optimizer.param_groups:
+            for param in param_group['params']:
+                if param in optimizer.state:
+                    state = optimizer.state[param]
+                    for key, value in state.items():
+                        if torch.is_tensor(value):
+                            if value.device != param.device:
+                                print(f"❌ OPTIMIZER STATE MISMATCH: {key} device={value.device}, param device={param.device}")
+                                state[key] = value.to(param.device)
+                                print(f"✅ Fixed optimizer state {key} device to: {state[key].device}")
 
     def get_cumulative_rewards(self, rewards: Tensor, undones: Tensor) -> Tensor:
         returns = torch.empty_like(rewards)
