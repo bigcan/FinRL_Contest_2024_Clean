@@ -560,6 +560,28 @@ class Ensemble:
         print(f"🎯 Starting multi-episode training: {num_episodes} episodes")
         
         while if_train and episode_count < num_episodes:
+            # CRITICAL FIX: Ensure networks remain on GPU before episode reset
+            target_device = agent.device
+            
+            # Force all networks to correct device before reset
+            agent.act = agent.act.to(target_device)
+            agent.act_target = agent.act_target.to(target_device)
+            if hasattr(agent, 'cri') and agent.cri is not agent.act:
+                agent.cri = agent.cri.to(target_device)
+                agent.cri_target = agent.cri_target.to(target_device)
+            
+            # Verify networks are on correct device
+            act_device = next(agent.act.parameters()).device
+            if act_device != target_device:
+                print(f"❌ CRITICAL: Networks still on wrong device {act_device} after forced move!")
+                # Emergency recovery - recreate networks on correct device
+                agent.act = agent.act.to(target_device)
+                agent.act_target = agent.act_target.to(target_device)
+                if hasattr(agent, 'cri') and agent.cri is not agent.act:
+                    agent.cri = agent.cri.to(target_device)
+                    agent.cri_target = agent.cri_target.to(target_device)
+                print(f"✅ Emergency network recovery completed")
+            
             # Reset environment for new episode with proper device handling
             state = env.reset()
             
@@ -578,9 +600,22 @@ class Ensemble:
             # Update agent's last_state to maintain device consistency
             agent.last_state = state.detach()
             
+            # CRITICAL: Verify networks didn't move during reset
+            post_reset_device = next(agent.act.parameters()).device
+            if post_reset_device != target_device:
+                print(f"❌ CRITICAL: Environment reset moved networks from {target_device} to {post_reset_device}!")
+                # Force networks back to correct device
+                agent.act = agent.act.to(target_device)
+                agent.act_target = agent.act_target.to(target_device)
+                if hasattr(agent, 'cri') and agent.cri is not agent.act:
+                    agent.cri = agent.cri.to(target_device)
+                    agent.cri_target = agent.cri_target.to(target_device)
+                print(f"✅ Networks restored to {target_device} after reset")
+            
             # Device consistency validation
             assert state.device == agent.device, f"State device {state.device} != agent device {agent.device}"
             assert agent.last_state.device == agent.device, f"Agent last_state device mismatch"
+            assert next(agent.act.parameters()).device == agent.device, f"Actor network device mismatch after reset"
             
             episode_start_step = training_step
             episode_reward = 0
@@ -588,6 +623,18 @@ class Ensemble:
             print(f"📈 Episode {episode_count + 1}/{num_episodes} starting...")
             
             buffer_items = agent.explore_env(env, horizon_len)
+            
+            # CRITICAL: Verify networks didn't move during exploration
+            post_explore_device = next(agent.act.parameters()).device
+            if post_explore_device != target_device:
+                print(f"❌ CRITICAL: Exploration moved networks from {target_device} to {post_explore_device}!")
+                # Force networks back to correct device
+                agent.act = agent.act.to(target_device)
+                agent.act_target = agent.act_target.to(target_device)
+                if hasattr(agent, 'cri') and agent.cri is not agent.act:
+                    agent.cri = agent.cri.to(target_device)
+                    agent.cri_target = agent.cri_target.to(target_device)
+                print(f"✅ Networks restored to {target_device} after exploration")
 
             action = buffer_items[1].flatten()
             action_count = th.bincount(action).data.cpu().numpy() / action.shape[0]

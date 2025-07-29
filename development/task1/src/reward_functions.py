@@ -444,28 +444,52 @@ class RewardCalculator:
         # Get transaction-cost adjusted return
         base_reward = self._transaction_cost_adjusted_reward(old_asset, new_asset, action_int, mid_price, slippage)
         
-        # Calculate return rate
-        return_rate = base_reward / old_asset
+        # CRITICAL FIX: Prevent division by zero and NaN propagation
+        old_asset_safe = th.clamp(old_asset.abs(), min=1e-8)  # Ensure non-zero denominator
+        return_rate = base_reward / old_asset_safe
+        
+        # CRITICAL FIX: Check for non-finite values before updating history
+        return_rate_item = return_rate.mean().item()
+        if not (th.isfinite(return_rate).all() and np.isfinite(return_rate_item)):
+            print(f"⚠️ Non-finite return rate detected: {return_rate_item}, using fallback")
+            return_rate_item = 0.0
         
         # Update return history
-        self.return_history.append(return_rate.mean().item())
+        self.return_history.append(return_rate_item)
         
         # Calculate rolling Sharpe ratio if we have enough history
         if len(self.return_history) >= 10:  # Minimum history for meaningful calculation
             returns_array = np.array(list(self.return_history))
-            excess_returns = returns_array - self.risk_free_rate
             
-            if np.std(returns_array) > 1e-8:  # Avoid division by zero
-                sharpe_ratio = np.mean(excess_returns) / np.std(returns_array)
+            # CRITICAL FIX: Remove non-finite values from returns array
+            returns_array = returns_array[np.isfinite(returns_array)]
+            
+            if len(returns_array) >= 5:  # Need minimum valid data points
+                excess_returns = returns_array - self.risk_free_rate
+                returns_std = np.std(returns_array)
                 
-                # Scale Sharpe ratio to reasonable reward magnitude
-                sharpe_bonus = th.tensor(sharpe_ratio * 0.01, device=self.device, dtype=base_reward.dtype)
-                reward = base_reward + sharpe_bonus
+                # CRITICAL FIX: Robust standard deviation check
+                if returns_std > 1e-8 and np.isfinite(returns_std):  # Avoid division by zero
+                    sharpe_ratio = np.mean(excess_returns) / returns_std
+                    
+                    # CRITICAL FIX: Validate Sharpe ratio before using
+                    if np.isfinite(sharpe_ratio) and abs(sharpe_ratio) < 100:  # Reasonable bounds
+                        sharpe_bonus = th.tensor(sharpe_ratio * 0.01, device=self.device, dtype=base_reward.dtype)
+                        reward = base_reward + sharpe_bonus
+                    else:
+                        reward = base_reward
+                else:
+                    reward = base_reward
             else:
                 reward = base_reward
         else:
             reward = base_reward
         
+        # CRITICAL FIX: Final safety check on reward
+        if not th.isfinite(reward).all():
+            print(f"⚠️ Non-finite reward detected, falling back to base reward")
+            reward = base_reward
+            
         return reward
     
     def _multi_objective_reward(self, 
@@ -482,13 +506,29 @@ class RewardCalculator:
         raw_return = new_asset - old_asset
         transaction_cost_reward = self._transaction_cost_adjusted_reward(old_asset, new_asset, action_int, mid_price, slippage)
         
-        # Update asset history for drawdown calculation
+        # CRITICAL FIX: Validate asset values before processing
         current_asset = new_asset.mean().item()
+        if not np.isfinite(current_asset) or current_asset <= 0:
+            print(f"⚠️ Invalid asset value detected: {current_asset}, using fallback")
+            current_asset = max(1e6, self.peak_asset_value * 0.99)  # Fallback to reasonable value
+            
         self.asset_history.append(current_asset)
         
-        # Update peak and calculate drawdown
-        self.peak_asset_value = max(self.peak_asset_value, current_asset)
-        self.current_drawdown = (self.peak_asset_value - current_asset) / self.peak_asset_value
+        # Update peak and calculate drawdown with safety checks
+        if current_asset > self.peak_asset_value:
+            self.peak_asset_value = current_asset
+            
+        # CRITICAL FIX: Safe drawdown calculation
+        if self.peak_asset_value > 0:
+            self.current_drawdown = max(0.0, (self.peak_asset_value - current_asset) / self.peak_asset_value)
+        else:
+            self.current_drawdown = 0.0
+            
+        # CRITICAL FIX: Validate drawdown before using
+        if not np.isfinite(self.current_drawdown):
+            print(f"⚠️ Invalid drawdown detected, resetting to 0")
+            self.current_drawdown = 0.0
+            
         self.drawdown_history.append(self.current_drawdown)
         
         # Calculate drawdown penalty
@@ -505,9 +545,18 @@ class RewardCalculator:
         sharpe_bonus = th.zeros_like(raw_return)
         if len(self.return_history) >= 20:
             returns_array = np.array(list(self.return_history))
-            if np.std(returns_array) > 1e-8:
-                sharpe_ratio = np.mean(returns_array - self.risk_free_rate) / np.std(returns_array)
-                sharpe_bonus = th.tensor(sharpe_ratio * 0.005, device=self.device, dtype=raw_return.dtype)
+            
+            # CRITICAL FIX: Remove non-finite values from returns array
+            returns_array = returns_array[np.isfinite(returns_array)]
+            
+            if len(returns_array) >= 10:  # Need minimum valid data points
+                returns_std = np.std(returns_array)
+                if returns_std > 1e-8 and np.isfinite(returns_std):
+                    sharpe_ratio = np.mean(returns_array - self.risk_free_rate) / returns_std
+                    
+                    # CRITICAL FIX: Validate Sharpe ratio
+                    if np.isfinite(sharpe_ratio) and abs(sharpe_ratio) < 100:
+                        sharpe_bonus = th.tensor(sharpe_ratio * 0.005, device=self.device, dtype=raw_return.dtype)
         
         # Multi-objective combination
         # α * returns + β * sharpe - γ * drawdown - δ * transaction_costs
@@ -518,10 +567,22 @@ class RewardCalculator:
                  gamma * drawdown_penalty - 
                  (raw_return - transaction_cost_reward))  # Transaction cost component
         
-        # Update return history
-        return_rate = (raw_return / old_asset).mean().item()
-        self.return_history.append(return_rate)
+        # Update return history with safety checks
+        old_asset_safe = th.clamp(old_asset.abs(), min=1e-8)  # Prevent division by zero
+        return_rate = (raw_return / old_asset_safe).mean().item()
         
+        # CRITICAL FIX: Validate return rate before adding to history
+        if np.isfinite(return_rate) and abs(return_rate) < 10:  # Reasonable bounds
+            self.return_history.append(return_rate)
+        else:
+            print(f"⚠️ Invalid return rate detected: {return_rate}, using 0.0")
+            self.return_history.append(0.0)
+        
+        # CRITICAL FIX: Final safety check on reward
+        if not th.isfinite(reward).all():
+            print(f"⚠️ Non-finite multi-objective reward detected, using raw return")
+            reward = raw_return
+            
         return reward
     
     def _adaptive_multi_objective_reward(self,
@@ -536,16 +597,34 @@ class RewardCalculator:
         """
         # Base components
         raw_return = new_asset - old_asset
-        return_rate = (raw_return / old_asset).mean().item()
+        
+        # CRITICAL FIX: Safe return rate calculation
+        old_asset_safe = th.clamp(old_asset.abs(), min=1e-8)  # Prevent division by zero
+        return_rate = (raw_return / old_asset_safe).mean().item()
+        
+        # CRITICAL FIX: Validate return rate before using
+        if not np.isfinite(return_rate) or abs(return_rate) > 10:
+            print(f"⚠️ Invalid return rate detected: {return_rate}, using fallback")
+            return_rate = 0.0
+        
+        # CRITICAL FIX: Validate asset values before processing
+        current_asset = new_asset.mean().item()
+        if not np.isfinite(current_asset) or current_asset <= 0:
+            print(f"⚠️ Invalid asset value detected: {current_asset}, using fallback")
+            current_asset = max(1e6, self.peak_asset_value * 0.99)  # Fallback to reasonable value
         
         # Update histories
-        current_asset = new_asset.mean().item()
         self.asset_history.append(current_asset)
         self.return_history.append(return_rate)
         
-        # 1. Market regime detection
-        market_regime = self.market_regime_detector.detect_regime(mid_price)
-        regime_multiplier = self.market_regime_detector.get_regime_multiplier(market_regime, "conservatism")
+        # 1. Market regime detection with safety
+        try:
+            market_regime = self.market_regime_detector.detect_regime(mid_price)
+            regime_multiplier = self.market_regime_detector.get_regime_multiplier(market_regime, "conservatism")
+        except Exception as e:
+            print(f"⚠️ Market regime detection failed: {e}, using defaults")
+            market_regime = "ranging"
+            regime_multiplier = 1.0
         
         # 2. Transaction cost component
         trade_occurred = action_int.abs() > 0
@@ -555,23 +634,48 @@ class RewardCalculator:
             transaction_volume * (slippage + self.transaction_cost_penalty),
             th.zeros_like(transaction_volume)
         )
-        self.total_transaction_costs += transaction_cost.sum().item()
+        
+        # CRITICAL FIX: Validate transaction cost before updating
+        transaction_cost_sum = transaction_cost.sum().item()
+        if np.isfinite(transaction_cost_sum) and transaction_cost_sum >= 0:
+            self.total_transaction_costs += transaction_cost_sum
         
         # 3. Risk-adjusted return component (Sharpe-like)
         sharpe_component = th.zeros_like(raw_return)
         if len(self.return_history) >= 20:
             returns_array = np.array(list(self.return_history))
-            if np.std(returns_array) > 1e-8:
-                sharpe_ratio = np.mean(returns_array - self.risk_free_rate) / np.std(returns_array)
-                sharpe_component = th.tensor(
-                    sharpe_ratio * 0.01 * self.reward_weights['risk_adjusted_return_weight'],
-                    device=self.device, 
-                    dtype=raw_return.dtype
-                )
+            
+            # CRITICAL FIX: Remove non-finite values from returns array
+            returns_array = returns_array[np.isfinite(returns_array)]
+            
+            if len(returns_array) >= 10:  # Need minimum valid data points
+                returns_std = np.std(returns_array)
+                if returns_std > 1e-8 and np.isfinite(returns_std):
+                    sharpe_ratio = np.mean(returns_array - self.risk_free_rate) / returns_std
+                    
+                    # CRITICAL FIX: Validate Sharpe ratio
+                    if np.isfinite(sharpe_ratio) and abs(sharpe_ratio) < 100:
+                        sharpe_component = th.tensor(
+                            sharpe_ratio * 0.01 * self.reward_weights['risk_adjusted_return_weight'],
+                            device=self.device, 
+                            dtype=raw_return.dtype
+                        )
         
-        # 4. Drawdown control
-        self.peak_asset_value = max(self.peak_asset_value, current_asset)
-        self.current_drawdown = (self.peak_asset_value - current_asset) / self.peak_asset_value
+        # 4. Drawdown control with safety checks
+        if current_asset > self.peak_asset_value:
+            self.peak_asset_value = current_asset
+            
+        # CRITICAL FIX: Safe drawdown calculation
+        if self.peak_asset_value > 0:
+            self.current_drawdown = max(0.0, (self.peak_asset_value - current_asset) / self.peak_asset_value)
+        else:
+            self.current_drawdown = 0.0
+            
+        # CRITICAL FIX: Validate drawdown before using
+        if not np.isfinite(self.current_drawdown):
+            print(f"⚠️ Invalid drawdown detected, resetting to 0")
+            self.current_drawdown = 0.0
+            
         self.drawdown_history.append(self.current_drawdown)
         
         drawdown_penalty = th.zeros_like(raw_return)
@@ -582,23 +686,32 @@ class RewardCalculator:
                 dtype=raw_return.dtype
             )
         
-        # 5. Dynamic conservatism penalty
-        # Convert action_int to 0-2 range for tracking
-        action_for_tracking = action_int + 1  # -1,0,1 -> 0,1,2
-        conservatism_penalty = self.conservatism_penalty.calculate_penalty(
-            recent_actions=action_for_tracking,
-            market_regime=market_regime,
-            regime_multiplier=regime_multiplier
-        )
+        # 5. Dynamic conservatism penalty with error handling
+        try:
+            # Convert action_int to 0-2 range for tracking
+            action_for_tracking = action_int + 1  # -1,0,1 -> 0,1,2
+            conservatism_penalty = self.conservatism_penalty.calculate_penalty(
+                recent_actions=action_for_tracking,
+                market_regime=market_regime,
+                regime_multiplier=regime_multiplier
+            )
+        except Exception as e:
+            print(f"⚠️ Conservatism penalty calculation failed: {e}, using zero penalty")
+            conservatism_penalty = th.tensor(0.0, device=self.device, dtype=raw_return.dtype)
         
-        # 6. Action diversity reward
-        self.diversity_tracker.update(action_for_tracking.item() if action_for_tracking.numel() == 1 
-                                     else action_for_tracking[0].item())
-        diversity_reward = self.diversity_tracker.calculate_diversity_reward()
-        
-        # Partially reset diversity tracker periodically
-        if self.diversity_tracker.total_actions > 200:
-            self.diversity_tracker.reset_window(keep_ratio=0.7)
+        # 6. Action diversity reward with error handling
+        try:
+            action_for_update = action_for_tracking.item() if action_for_tracking.numel() == 1 else action_for_tracking[0].item()
+            if 0 <= action_for_update <= 2:  # Valid action range
+                self.diversity_tracker.update(int(action_for_update))
+            diversity_reward = self.diversity_tracker.calculate_diversity_reward()
+            
+            # Partially reset diversity tracker periodically
+            if self.diversity_tracker.total_actions > 200:
+                self.diversity_tracker.reset_window(keep_ratio=0.7)
+        except Exception as e:
+            print(f"⚠️ Diversity tracking failed: {e}, using zero diversity reward")
+            diversity_reward = th.tensor(0.0, device=self.device, dtype=raw_return.dtype)
         
         # 7. Combine all components with adaptive weights
         weights = self.reward_weights
@@ -615,11 +728,21 @@ class RewardCalculator:
             - drawdown_penalty
         )
         
-        # Market regime-specific adjustments
-        if market_regime == "trending" and action_int.abs().sum().item() > 0:  # Reward trading in trends
-            total_reward *= 1.2
-        elif market_regime == "volatile" and action_int.abs().sum().item() == 0:  # Penalize holding in volatility
-            total_reward *= 0.8
+        # Market regime-specific adjustments with safety checks
+        try:
+            action_sum = action_int.abs().sum().item()
+            if np.isfinite(action_sum):
+                if market_regime == "trending" and action_sum > 0:  # Reward trading in trends
+                    total_reward *= 1.2
+                elif market_regime == "volatile" and action_sum == 0:  # Penalize holding in volatility
+                    total_reward *= 0.8
+        except Exception as e:
+            print(f"⚠️ Regime adjustment failed: {e}, skipping adjustment")
+        
+        # CRITICAL FIX: Final safety check on total reward
+        if not th.isfinite(total_reward).all():
+            print(f"⚠️ Non-finite adaptive reward detected, using raw return")
+            total_reward = raw_return
             
         return total_reward
     

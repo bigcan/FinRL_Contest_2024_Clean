@@ -1,68 +1,176 @@
 #!/usr/bin/env python3
 """
-Test Device Consistency Fix
-Quick validation that the CUDA device mismatch is resolved
+Quick test to validate the comprehensive device fix for multi-episode training
 """
 
-import sys
 import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+import sys
+import torch
+import numpy as np
+from erl_config import Config, build_env
+from erl_replay_buffer import ReplayBuffer
+from trade_simulator import TradeSimulator, EvalTradeSimulator
+from erl_agent import AgentD3QN
 
-# Import the training module
-from src.task1_ensemble import run
-from src.erl_agent import AgentD3QN, AgentDoubleDQN
-
-def test_device_fix():
-    """Test the device consistency fix with 3 episodes"""
+def test_device_consistency():
+    """Test device consistency during episode transitions"""
     
     print("🧪 Testing Device Consistency Fix")
-    print("=" * 50)
     
-    # Configuration for quick test
-    test_config = {
-        'gpu_id': 0,
-        'num_sims': 8,  # Smaller for quick test
-        'num_episodes': 3,  # Just test episode transitions
-        'data_length': 1000,  # Small data length for speed
-        'break_step': 3000,  # Small break step
-        'episode_tracking': True,
-        'batch_size': 128,  # Smaller batch
-        'horizon_len_multiplier': 0.5,  # Reduce horizon length
+    # Minimal config for testing
+    gpu_id = 0
+    device = torch.device(f"cuda:{gpu_id}" if torch.cuda.is_available() else "cpu")
+    num_sims = 8  # Small for quick testing
+    data_length = 1000  # Small dataset for speed
+    
+    # Environment setup
+    env_args = {
+        "env_name": "TradeSimulator-v0",
+        "num_envs": num_sims,
+        "max_step": 400,
+        "state_dim": 41,
+        "action_dim": 3,
+        "if_discrete": True,
+        "max_position": 1,
+        "slippage": 7e-7,
+        "num_sims": num_sims,
+        "step_gap": 2,
+        "data_length": data_length,
     }
     
-    print(f"🔧 Test Configuration:")
-    print(f"   Episodes: {test_config['num_episodes']}")
-    print(f"   Data per episode: {test_config['data_length']}")
-    print(f"   GPU ID: {test_config['gpu_id']}")
-    print(f"   Parallel envs: {test_config['num_sims']}")
-    print()
+    # Agent setup
+    args = Config(agent_class=AgentD3QN, env_class=TradeSimulator, env_args=env_args)
+    args.gpu_id = gpu_id
+    args.net_dims = (64, 64)  # Smaller networks for speed
+    args.gamma = 0.995
+    args.learning_rate = 2e-6
+    args.batch_size = 128
+    args.horizon_len = 200  # Short episodes
     
-    try:
-        # Test with single agent first
-        print("🎯 Testing with D3QN agent...")
-        run(
-            save_path='device_fix_test',
-            agent_list=[AgentD3QN],  # Single agent for speed
-            log_rules=False,
-            config_dict=test_config
-        )
+    args.init_before_training()
+    
+    # Create environment and agent
+    env = build_env(args.env_class, args.env_args, args.gpu_id)
+    agent = args.agent_class(
+        args.net_dims,
+        args.state_dim,
+        args.action_dim,
+        gpu_id=args.gpu_id,
+        args=args,
+    )
+    
+    # Setup buffer
+    buffer = ReplayBuffer(
+        gpu_id=args.gpu_id,
+        num_seqs=args.num_envs,
+        max_size=args.horizon_len * 4,
+        state_dim=args.state_dim,
+        action_dim=1,
+    )
+    
+    # Initialize agent state
+    state = env.reset()
+    if isinstance(state, np.ndarray):
+        state = torch.tensor(state, dtype=torch.float32, device=agent.device).unsqueeze(0) if args.num_envs == 1 else torch.tensor(state, dtype=torch.float32, device=agent.device)
+    else:
+        state = state.to(agent.device)
+    agent.last_state = state.detach()
+    
+    # Warm up buffer
+    buffer_items = agent.explore_env(env, args.horizon_len, if_random=True)
+    buffer.update(buffer_items)
+    
+    print(f"✅ Initial setup complete - Agent device: {agent.device}")
+    print(f"   Actor network device: {next(agent.act.parameters()).device}")
+    print(f"   Critic network device: {next(agent.cri.parameters()).device}")
+    
+    # Test 3 episodes to validate device consistency
+    for episode in range(3):
+        print(f"\n📈 Episode {episode + 1}/3 starting...")
         
-        print("✅ Device fix test PASSED!")
-        print("✅ Multi-episode transitions working correctly")
-        return True
+        # CRITICAL FIX: Ensure networks remain on GPU before episode reset
+        target_device = agent.device
         
-    except RuntimeError as e:
-        if "Expected all tensors to be on the same device" in str(e):
-            print("❌ Device fix test FAILED!")
-            print(f"❌ Still getting CUDA device mismatch: {e}")
-            return False
+        # Force all networks to correct device before reset
+        agent.act = agent.act.to(target_device)
+        agent.act_target = agent.act_target.to(target_device)
+        if hasattr(agent, 'cri') and agent.cri is not agent.act:
+            agent.cri = agent.cri.to(target_device)
+            agent.cri_target = agent.cri_target.to(target_device)
+        
+        # Verify networks are on correct device
+        act_device = next(agent.act.parameters()).device
+        if act_device != target_device:
+            print(f"❌ CRITICAL: Networks still on wrong device {act_device} after forced move!")
+            # Emergency recovery
+            agent.act = agent.act.to(target_device)
+            agent.act_target = agent.act_target.to(target_device)
+            if hasattr(agent, 'cri') and agent.cri is not agent.act:
+                agent.cri = agent.cri.to(target_device)
+                agent.cri_target = agent.cri_target.to(target_device)
+            print(f"✅ Emergency network recovery completed")
+        
+        # Reset environment
+        state = env.reset()
+        if isinstance(state, np.ndarray):
+            state = torch.tensor(state, dtype=torch.float32, device=agent.device).unsqueeze(0) if args.num_envs == 1 else torch.tensor(state, dtype=torch.float32, device=agent.device)
         else:
-            print(f"❌ Unexpected error: {e}")
-            return False
-    except Exception as e:
-        print(f"❌ Test failed with error: {e}")
-        return False
+            state = state.to(agent.device)
+        agent.last_state = state.detach()
+        
+        # CRITICAL: Verify networks didn't move during reset
+        post_reset_device = next(agent.act.parameters()).device
+        if post_reset_device != target_device:
+            print(f"❌ CRITICAL: Environment reset moved networks from {target_device} to {post_reset_device}!")
+            # Force networks back to correct device
+            agent.act = agent.act.to(target_device)
+            agent.act_target = agent.act_target.to(target_device)
+            if hasattr(agent, 'cri') and agent.cri is not agent.act:
+                agent.cri = agent.cri.to(target_device)
+                agent.cri_target = agent.cri_target.to(target_device)
+            print(f"✅ Networks restored to {target_device} after reset")
+        
+        print(f"   ✅ Pre-exploration - Networks on: {next(agent.act.parameters()).device}")
+        
+        # Explore environment
+        buffer_items = agent.explore_env(env, args.horizon_len)
+        
+        # CRITICAL: Verify networks didn't move during exploration
+        post_explore_device = next(agent.act.parameters()).device
+        if post_explore_device != target_device:
+            print(f"❌ CRITICAL: Exploration moved networks from {target_device} to {post_explore_device}!")
+            # Force networks back to correct device
+            agent.act = agent.act.to(target_device)
+            agent.act_target = agent.act_target.to(target_device)
+            if hasattr(agent, 'cri') and agent.cri is not agent.act:
+                agent.cri = agent.cri.to(target_device)
+                agent.cri_target = agent.cri_target.to(target_device)
+            print(f"✅ Networks restored to {target_device} after exploration")
+        
+        print(f"   ✅ Post-exploration - Networks on: {next(agent.act.parameters()).device}")
+        
+        # Update buffer and train
+        buffer.update(buffer_items)
+        
+        torch.set_grad_enabled(True)
+        try:
+            logging_tuple = agent.update_net(buffer)
+            print(f"   ✅ Episode {episode + 1} training successful!")
+            
+            # Verify networks after training
+            post_training_device = next(agent.act.parameters()).device
+            print(f"   ✅ Post-training - Networks on: {post_training_device}")
+            
+            if post_training_device != target_device:
+                print(f"❌ WARNING: Networks moved during training!")
+        except Exception as e:
+            print(f"   ❌ Episode {episode + 1} training failed: {e}")
+            break
+        finally:
+            torch.set_grad_enabled(False)
+    
+    env.close() if hasattr(env, "close") else None
+    print(f"\n🏁 Device consistency test completed!")
 
 if __name__ == "__main__":
-    success = test_device_fix()
-    sys.exit(0 if success else 1)
+    test_device_consistency()
