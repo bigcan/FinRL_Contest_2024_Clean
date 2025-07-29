@@ -334,6 +334,11 @@ class AgentDoubleDQN:
 
         state_avg = states.mean(dim=0, keepdim=True)
         state_std = states.std(dim=0, keepdim=True)
+        
+        # CRITICAL FIX: Ensure computed stats are on same device as network parameters
+        state_avg = state_avg.to(self.act.state_avg.device)
+        state_std = state_std.to(self.act.state_std.device)
+        
         self.act.state_avg[:] = self.act.state_avg * (1 - tau) + state_avg * tau
         self.act.state_std[:] = self.cri.state_std * (1 - tau) + state_std * tau + 1e-4
         self.cri.state_avg[:] = self.act.state_avg
@@ -341,6 +346,11 @@ class AgentDoubleDQN:
 
         returns_avg = returns.mean(dim=0)
         returns_std = returns.std(dim=0)
+        
+        # CRITICAL FIX: Ensure returns stats are on same device as network parameters
+        returns_avg = returns_avg.to(self.cri.value_avg.device)
+        returns_std = returns_std.to(self.cri.value_std.device)
+        
         self.cri.value_avg[:] = self.cri.value_avg * (1 - tau) + returns_avg * tau
         self.cri.value_std[:] = self.cri.value_std * (1 - tau) + returns_std * tau + 1e-4
 
