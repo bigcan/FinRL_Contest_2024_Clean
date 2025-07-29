@@ -45,6 +45,12 @@ class QNetTwin(QNetBase):  # Double DQN
         return q_val  # one group of Q values
 
     def get_q1_q2(self, state):
+        # CRITICAL FIX: Ensure state is on correct device before neural network operations
+        if not isinstance(state, torch.Tensor):
+            state = torch.tensor(state, dtype=torch.float32, device=next(self.parameters()).device)
+        else:
+            state = state.to(next(self.parameters()).device)
+            
         state = self.state_norm(state)
         s_enc = self.net_state(state)  # encoded state
         q_val1 = self.net_val1(s_enc)  # q value 1
@@ -54,6 +60,13 @@ class QNetTwin(QNetBase):  # Double DQN
         return q_val1, q_val2  # two groups of Q values
 
     def get_action(self, state):
+        # CRITICAL FIX: Ensure state is on correct device before neural network operations
+        # This method is called during episode transitions and must validate device consistency
+        if not isinstance(state, torch.Tensor):
+            state = torch.tensor(state, dtype=torch.float32, device=next(self.parameters()).device)
+        else:
+            state = state.to(next(self.parameters()).device)
+            
         state = self.state_norm(state)
         s_enc = self.net_state(state)  # encoded state
         q_val = self.net_val1(s_enc)  # q value
@@ -62,7 +75,7 @@ class QNetTwin(QNetBase):  # Double DQN
         else:
             # a_prob = self.soft_max(q_val)
             # action = torch.multinomial(a_prob, num_samples=1)
-            action = torch.randint(self.action_dim, size=(state.shape[0], 1))
+            action = torch.randint(self.action_dim, size=(state.shape[0], 1), device=state.device)
         return action
 
 
@@ -93,6 +106,12 @@ class QNetTwinDuel(QNetBase):  # D3QN: Dueling Double DQN
         return value
 
     def get_q1_q2(self, state):
+        # CRITICAL FIX: Ensure state is on correct device before neural network operations
+        if not isinstance(state, torch.Tensor):
+            state = torch.tensor(state, dtype=torch.float32, device=next(self.parameters()).device)
+        else:
+            state = state.to(next(self.parameters()).device)
+            
         state = self.state_norm(state)
         s_enc = self.net_state(state)  # encoded state
         
@@ -122,6 +141,13 @@ class QNetTwinDuel(QNetBase):  # D3QN: Dueling Double DQN
         return q_duel1, q_duel2  # two dueling Q values
 
     def get_action(self, state):
+        # CRITICAL FIX: Ensure state is on correct device before neural network operations
+        # This method is called during episode transitions and must validate device consistency
+        if not isinstance(state, torch.Tensor):
+            state = torch.tensor(state, dtype=torch.float32, device=next(self.parameters()).device)
+        else:
+            state = state.to(next(self.parameters()).device)
+            
         state = self.state_norm(state)
         s_enc = self.net_state(state)  # encoded state
         # Use the corrected dueling formula for action selection
@@ -134,7 +160,7 @@ class QNetTwinDuel(QNetBase):  # D3QN: Dueling Double DQN
         else:
             # a_prob = self.soft_max(q_values)
             # action = torch.multinomial(a_prob, num_samples=1)
-            action = torch.randint(self.action_dim, size=(state.shape[0], 1))
+            action = torch.randint(self.action_dim, size=(state.shape[0], 1), device=state.device)
         return action
 
 

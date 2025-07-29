@@ -1,0 +1,53 @@
+{
+  "start_time": 1753715766.2706425,
+  "device": "cuda",
+  "timestamp": "20250728_231606",
+  "approach": "original_framework_with_enhancements",
+  "config": {
+    "gpu_id": 0,
+    "num_sims": 32,
+    "num_ignore_step": 60,
+    "max_position": 1,
+    "step_gap": 2,
+    "slippage": 7e-07,
+    "starting_cash": 1000000.0,
+    "net_dims": [
+      256,
+      256,
+      128
+    ],
+    "gamma": 0.995,
+    "explore_rate": 0.01,
+    "state_value_tau": 0.01,
+    "soft_update_tau": 2e-06,
+    "learning_rate": 1e-05,
+    "batch_size": 256,
+    "break_step": 8,
+    "buffer_size_multiplier": 4,
+    "repeat_times": 2,
+    "horizon_len_multiplier": 1,
+    "eval_per_step_multiplier": 1,
+    "num_workers": 1,
+    "save_gap": 4,
+    "data_length": 8000
+  },
+  "state_dim": 41,
+  "training": {
+    "completed": false,
+    "error": "'NoneType' object has no attribute 'eval_env_class'"
+  },
+  "comparison": {
+    "refactored_available": true,
+    "refactored_parameters": 110298,
+    "original_training": false,
+    "capabilities": [
+      "Fixed Double DQN algorithm",
+      "Modular architecture",
+      "Advanced ensemble strategies",
+      "Comprehensive testing",
+      "Enhanced feature engineering"
+    ]
+  },
+  "end_time": 1753715784.0314157,
+  "total_duration": 17.760773181915283
+}

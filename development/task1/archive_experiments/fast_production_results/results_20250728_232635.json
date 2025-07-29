@@ -1,0 +1,29 @@
+{
+  "Fast_Conservative": {
+    "initial_performance": 79.15977847661705,
+    "final_performance": 79.71152807445416,
+    "improvement": 0.5517495978371159,
+    "total_reward": 3978.789752105543,
+    "model_path": "fast_production_results/Fast_Conservative.pth",
+    "learning_rate": 0.0001,
+    "converged": true
+  },
+  "Fast_Aggressive": {
+    "initial_performance": 80.60284412097602,
+    "final_performance": 80.05960858455082,
+    "improvement": -0.5432355364252004,
+    "total_reward": 3989.5369996382824,
+    "model_path": "fast_production_results/Fast_Aggressive.pth",
+    "learning_rate": 0.0005,
+    "converged": false
+  },
+  "Fast_Balanced": {
+    "initial_performance": 80.48511399870475,
+    "final_performance": 79.59282529236553,
+    "improvement": -0.8922887063392153,
+    "total_reward": 3997.8156650781434,
+    "model_path": "fast_production_results/Fast_Balanced.pth",
+    "learning_rate": 0.0003,
+    "converged": false
+  }
+}

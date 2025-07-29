@@ -196,15 +196,32 @@ class AgentDoubleDQN:
             force_explore = self.should_force_exploration() and not if_random
             
             if if_random or force_explore:
-                action = torch.randint(self.action_dim, size=(self.num_envs, 1))
+                action = torch.randint(self.action_dim, size=(self.num_envs, 1), device=self.device)
                 if force_explore and t == 0:  # Log only once per horizon
                     print(f"🎲 Forcing exploration due to conservative behavior")
             else:
+                # CRITICAL DEBUG: Check state device before neural network call
+                if not isinstance(state, torch.Tensor):
+                    print(f"❌ ERROR: state is not a tensor, type: {type(state)}")
+                    state = torch.tensor(state, dtype=torch.float32, device=self.device)
+                elif state.device != self.device:
+                    print(f"❌ ERROR: state device mismatch - state: {state.device}, agent: {self.device}")
+                    state = state.to(self.device)
+                    print(f"✅ Fixed state device to: {state.device}")
+                
                 action = get_action(state).detach()  # different
                 
             states[t] = state
 
             state, reward, done, _ = env.step(action)  # next_state
+            
+            # CRITICAL FIX: Ensure state tensor is on correct device after each env step
+            # The environment may return state tensors on CPU, causing device mismatch in subsequent episodes
+            if not isinstance(state, torch.Tensor):
+                state = torch.tensor(state, dtype=torch.float32, device=self.device)
+            else:
+                state = state.to(self.device)
+            
             actions[t] = action
             rewards[t] = reward
             dones[t] = done
@@ -295,6 +312,14 @@ class AgentDoubleDQN:
         horizon_len = rewards.shape[0]
 
         last_state = self.last_state
+        
+        # CRITICAL FIX: Ensure last_state is on correct device for neural network forward pass
+        # This method is called during agent updates and can cause device mismatch in episode transitions
+        if not isinstance(last_state, torch.Tensor):
+            last_state = torch.tensor(last_state, dtype=torch.float32, device=self.device)
+        else:
+            last_state = last_state.to(self.device)
+        
         # Fix: Use actual Q-value instead of action index for cumulative rewards
         next_q_values = self.act_target.get_q1_q2(last_state)
         next_value = torch.min(*next_q_values).max(dim=1, keepdim=True)[0].squeeze(1).detach()
@@ -439,11 +464,18 @@ class AgentNoisyDQN(AgentDoubleDQN):
             
         get_action = self.act.get_action
         for t in range(horizon_len):
-            action = torch.randint(self.action_dim, size=(self.num_envs, 1)) if if_random \
+            action = torch.randint(self.action_dim, size=(self.num_envs, 1), device=self.device) if if_random \
                 else get_action(state).detach()
             states[t] = state
 
             state, reward, done, _ = env.step(action)
+            
+            # CRITICAL FIX: Ensure state tensor is on correct device after each env step
+            if not isinstance(state, torch.Tensor):
+                state = torch.tensor(state, dtype=torch.float32, device=self.device)
+            else:
+                state = state.to(self.device)
+            
             actions[t] = action
             rewards[t] = reward
             dones[t] = done
@@ -480,11 +512,18 @@ class AgentNoisyDuelDQN(AgentDoubleDQN):
             
         get_action = self.act.get_action
         for t in range(horizon_len):
-            action = torch.randint(self.action_dim, size=(self.num_envs, 1)) if if_random \
+            action = torch.randint(self.action_dim, size=(self.num_envs, 1), device=self.device) if if_random \
                 else get_action(state).detach()
             states[t] = state
 
             state, reward, done, _ = env.step(action)
+            
+            # CRITICAL FIX: Ensure state tensor is on correct device after each env step
+            if not isinstance(state, torch.Tensor):
+                state = torch.tensor(state, dtype=torch.float32, device=self.device)
+            else:
+                state = state.to(self.device)
+            
             actions[t] = action
             rewards[t] = reward
             dones[t] = done
@@ -543,11 +582,18 @@ class AgentRainbowDQN(AgentDoubleDQN):
             
         get_action = self.act.get_action
         for t in range(horizon_len):
-            action = torch.randint(self.action_dim, size=(self.num_envs, 1)) if if_random \
+            action = torch.randint(self.action_dim, size=(self.num_envs, 1), device=self.device) if if_random \
                 else get_action(state).detach()
             states[t] = state
 
             state, reward, done, _ = env.step(action)
+            
+            # CRITICAL FIX: Ensure state tensor is on correct device after each env step
+            if not isinstance(state, torch.Tensor):
+                state = torch.tensor(state, dtype=torch.float32, device=self.device)
+            else:
+                state = state.to(self.device)
+            
             actions[t] = action
             rewards[t] = reward
             dones[t] = done

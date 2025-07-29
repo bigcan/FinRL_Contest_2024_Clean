@@ -1,0 +1,31 @@
+--- Comprehensive Device Consistency Fix for Multi-Episode Training ---
+
+IDENTIFIED ISSUES:
+1. torch.randint() calls without device specification (defaults to CPU)
+2. Inconsistent device handling in agent state management
+3. Missing device validation in exploration loops
+4. Environment state returns may be on wrong device
+
+REQUIRED CHANGES:
+
+1. Fix all torch.randint calls in erl_agent.py:
+   - Line 199: action = torch.randint(self.action_dim, size=(self.num_envs, 1), device=self.device)
+   - Line 137 in erl_net.py: action = torch.randint(self.action_dim, size=(state.shape[0], 1), device=state.device)
+   - All similar occurrences throughout agent code
+
+2. Add device consistency validation in explore_env methods:
+   - Validate state device before neural network calls
+   - Ensure all tensors in exploration loop are on correct device
+   - Add assertions to catch device mismatches early
+
+3. Strengthen episode reset device handling:
+   - Ensure environment state returns are on correct device
+   - Validate agent.last_state device consistency
+   - Add comprehensive device checking
+
+4. Add device debugging utilities:
+   - Device state logging for troubleshooting
+   - Tensor device validation functions
+   - Early warning systems for device mismatches
+
+This comprehensive fix addresses the root cause of the Episode 2 CUDA device mismatch error.

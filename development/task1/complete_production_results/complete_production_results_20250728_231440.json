@@ -1,0 +1,117 @@
+{
+  "start_time": 1753715680.113198,
+  "device": "cuda",
+  "timestamp": "20250728_231440",
+  "training_config": {},
+  "agents": {
+    "DoubleDQN_Production": {
+      "type": "DoubleDQNAgent",
+      "config": {
+        "agent_type": "AgentDoubleDQN",
+        "net_dims": [
+          512,
+          512,
+          256
+        ],
+        "gamma": 0.995,
+        "learning_rate": 5e-05,
+        "batch_size": 128,
+        "repeat_times": 2,
+        "reward_scale": 1.0,
+        "clip_grad_norm": 10.0,
+        "soft_update_tau": 0.001,
+        "state_value_tau": 0.01,
+        "explore_rate": 0.02,
+        "if_off_policy": true
+      },
+      "parameters": 417114,
+      "created": true
+    },
+    "D3QN_Production": {
+      "type": "D3QNAgent",
+      "config": {
+        "agent_type": "AgentD3QN",
+        "net_dims": [
+          512,
+          512,
+          512
+        ],
+        "gamma": 0.995,
+        "learning_rate": 3e-05,
+        "batch_size": 128,
+        "repeat_times": 2,
+        "reward_scale": 1.0,
+        "clip_grad_norm": 10.0,
+        "soft_update_tau": 0.001,
+        "state_value_tau": 0.01,
+        "explore_rate": 0.01,
+        "if_off_policy": true
+      },
+      "parameters": 551004,
+      "created": true
+    },
+    "DoubleDQN_Aggressive": {
+      "type": "DoubleDQNAgent",
+      "config": {
+        "agent_type": "AgentDoubleDQN",
+        "net_dims": [
+          256,
+          256,
+          128
+        ],
+        "gamma": 0.99,
+        "learning_rate": 0.0001,
+        "batch_size": 64,
+        "repeat_times": 2,
+        "reward_scale": 1.0,
+        "clip_grad_norm": 5.0,
+        "soft_update_tau": 0.005,
+        "state_value_tau": 0.01,
+        "explore_rate": 0.05,
+        "if_off_policy": true
+      },
+      "parameters": 110298,
+      "created": true
+    }
+  },
+  "ensemble": {
+    "created": true,
+    "strategy": "weighted_vote",
+    "num_agents": 3,
+    "agents": [
+      "DoubleDQN_Production",
+      "D3QN_Production",
+      "DoubleDQN_Aggressive"
+    ]
+  },
+  "performance": {},
+  "environment": {
+    "state_dim": 41,
+    "action_dim": 3,
+    "dataset_size": 823682,
+    "feature_type": "_enhanced_v3",
+    "data_path": "/mnt/c/QuantConnect/FinRL_Contest_2024/FinRL_Contest_2024/data/raw/task1/BTC_1sec_predict_enhanced_v3.npy"
+  },
+  "training": {
+    "DoubleDQN_Production": {
+      "failed": true,
+      "error": "axis 1 is out of bounds for array of dimension 0"
+    },
+    "D3QN_Production": {
+      "failed": true,
+      "error": "axis 1 is out of bounds for array of dimension 0"
+    },
+    "DoubleDQN_Aggressive": {
+      "failed": true,
+      "error": "axis 1 is out of bounds for array of dimension 0"
+    }
+  },
+  "saved_models": {
+    "DoubleDQN_Production": "complete_production_results/production_models/DoubleDQN_Production/model.pth",
+    "D3QN_Production": "complete_production_results/production_models/D3QN_Production/model.pth",
+    "DoubleDQN_Aggressive": "complete_production_results/production_models/DoubleDQN_Aggressive/model.pth",
+    "ensemble": "complete_production_results/production_models/ensemble_config.json"
+  },
+  "end_time": 1753715700.483677,
+  "total_duration": 20.370478868484497
+}
