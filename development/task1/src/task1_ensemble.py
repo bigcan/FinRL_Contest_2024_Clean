@@ -613,6 +613,18 @@ class Ensemble:
 
             torch.set_grad_enabled(True)
             logging_tuple = agent.update_net(buffer)
+            
+            # CRITICAL FIX: Ensure networks remain on correct device after update
+            target_device = agent.device
+            if agent.act.parameters().__next__().device != target_device:
+                print(f"❌ NETWORK MOVED TO WRONG DEVICE! Moving back to {target_device}")
+                agent.act = agent.act.to(target_device)
+                agent.act_target = agent.act_target.to(target_device)
+                if hasattr(agent, 'cri') and agent.cri is not agent.act:
+                    agent.cri = agent.cri.to(target_device)
+                    agent.cri_target = agent.cri_target.to(target_device)
+                print(f"✅ Networks restored to: {target_device}")
+            
             torch.set_grad_enabled(False)
 
             # Log training progress with episode info
