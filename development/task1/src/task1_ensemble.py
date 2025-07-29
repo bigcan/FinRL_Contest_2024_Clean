@@ -545,6 +545,9 @@ class Ensemble:
         if_save_buffer = args.if_save_buffer
         num_episodes = getattr(args, 'num_episodes', 50)
         episode_tracking = getattr(args, 'episode_tracking', True)
+        # Store values needed for device consistency in episode reset
+        num_envs = args.num_envs
+        state_dim = args.state_dim
         del args
 
         import torch as th
@@ -557,8 +560,28 @@ class Ensemble:
         print(f"🎯 Starting multi-episode training: {num_episodes} episodes")
         
         while if_train and episode_count < num_episodes:
-            # Reset environment for new episode
-            env.reset()
+            # Reset environment for new episode with proper device handling
+            state = env.reset()
+            
+            # Ensure state is properly placed on agent device (same logic as initial setup)
+            if num_envs == 1:
+                if isinstance(state, np.ndarray):
+                    state = torch.tensor(state, dtype=torch.float32, device=agent.device).unsqueeze(0)
+                else:
+                    state = state.to(agent.device)
+            else:
+                if not isinstance(state, torch.Tensor):
+                    state = torch.tensor(state, dtype=torch.float32, device=agent.device)
+                else:
+                    state = state.to(agent.device)
+            
+            # Update agent's last_state to maintain device consistency
+            agent.last_state = state.detach()
+            
+            # Device consistency validation
+            assert state.device == agent.device, f"State device {state.device} != agent device {agent.device}"
+            assert agent.last_state.device == agent.device, f"Agent last_state device mismatch"
+            
             episode_start_step = training_step
             episode_reward = 0
             
@@ -571,9 +594,11 @@ class Ensemble:
             action_count = np.ceil(action_count * 998).astype(int)
 
             position = buffer_items[0][:, :, 0].long().flatten()
-            position = position.float()  # TODO Only if on cpu
-            position_count = torch.histc(position, bins=env.max_position * 2 + 1, min=-2, max=2)
-            position_count = position_count.data.cpu().numpy() / position.shape[0]
+            position = position.float()  # Ensure float type for histc
+            # Ensure position tensor is on CPU for histc operation (histc requires CPU tensors)
+            position_cpu = position.cpu() if position.is_cuda else position
+            position_count = torch.histc(position_cpu, bins=env.max_position * 2 + 1, min=-2, max=2)
+            position_count = position_count.data.cpu().numpy() / position_cpu.shape[0]
             position_count = np.ceil(position_count * 998).astype(int)
 
             print(";;;", " " * 70, action_count, position_count)
