@@ -85,7 +85,7 @@ class TrainingLogger:
         # CSV logging
         self.csv_path = os.path.join(self.log_dir, 'training_metrics.csv')
         
-    def log_training_step(self, step, exp_r, action_count, position_count, logging_tuple=None, eval_score=None):
+    def log_training_step(self, step, exp_r, action_count, position_count, logging_tuple=None, eval_score=None, episode=None):
         """Log metrics for a training step"""
         
         timestamp = datetime.now()
@@ -96,6 +96,12 @@ class TrainingLogger:
         self.training_metrics['action_counts'].append(action_count.tolist() if hasattr(action_count, 'tolist') else action_count)
         self.training_metrics['position_counts'].append(position_count.tolist() if hasattr(position_count, 'tolist') else position_count)
         self.training_metrics['timestamps'].append(timestamp)
+        
+        # Store episode information for multi-episode tracking
+        if episode is not None:
+            if 'episodes' not in self.training_metrics:
+                self.training_metrics['episodes'] = []
+            self.training_metrics['episodes'].append(episode)
         
         # Extract loss information from logging_tuple if available
         if logging_tuple and len(logging_tuple) > 0:
@@ -212,6 +218,10 @@ class TrainingLogger:
                 # Add evaluation score
                 if i < len(self.training_metrics['evaluation_scores']) and self.training_metrics['evaluation_scores'][i] is not None:
                     row['evaluation_score'] = self.training_metrics['evaluation_scores'][i]
+                    
+                # Add episode information for multi-episode tracking
+                if 'episodes' in self.training_metrics and i < len(self.training_metrics['episodes']):
+                    row['episode'] = self.training_metrics['episodes'][i]
                 
                 csv_data.append(row)
             
@@ -527,19 +537,33 @@ class Ensemble:
         training_logger = TrainingLogger(save_path=self.save_path, agent_name=agent_name)
         print(f"Training logger initialized for {agent_name}")
 
-        """train loop"""
+        """multi-episode train loop"""
         cwd = args.cwd
         break_step = args.break_step
         horizon_len = args.horizon_len
         if_off_policy = args.if_off_policy
         if_save_buffer = args.if_save_buffer
+        num_episodes = getattr(args, 'num_episodes', 50)
+        episode_tracking = getattr(args, 'episode_tracking', True)
         del args
 
         import torch as th
 
         if_train = True
         training_step = 0
-        while if_train:
+        episode_count = 0
+        episode_rewards = []
+        
+        print(f"🎯 Starting multi-episode training: {num_episodes} episodes")
+        
+        while if_train and episode_count < num_episodes:
+            # Reset environment for new episode
+            env.reset()
+            episode_start_step = training_step
+            episode_reward = 0
+            
+            print(f"📈 Episode {episode_count + 1}/{num_episodes} starting...")
+            
             buffer_items = agent.explore_env(env, horizon_len)
 
             action = buffer_items[1].flatten()
@@ -555,6 +579,8 @@ class Ensemble:
             print(";;;", " " * 70, action_count, position_count)
 
             exp_r = buffer_items[2].mean().item()
+            episode_reward = exp_r
+            
             if if_off_policy:
                 buffer.update(buffer_items)
             else:
@@ -564,13 +590,14 @@ class Ensemble:
             logging_tuple = agent.update_net(buffer)
             torch.set_grad_enabled(False)
 
-            # Log training progress
+            # Log training progress with episode info
             training_logger.log_training_step(
                 step=training_step,
                 exp_r=exp_r,
                 action_count=action_count,
                 position_count=position_count,
-                logging_tuple=logging_tuple
+                logging_tuple=logging_tuple,
+                episode=episode_count
             )
 
             evaluator.evaluate_and_save(
@@ -579,8 +606,18 @@ class Ensemble:
                 exp_r=exp_r,
                 logging_tuple=logging_tuple,
             )
-            if_train = (evaluator.total_step <= break_step) and (not os.path.exists(f"{cwd}/stop"))
+            
+            episode_rewards.append(episode_reward)
+            episode_count += 1
             training_step += 1
+            
+            print(f"✅ Episode {episode_count} completed - Reward: {episode_reward:.2f}")
+            
+            # Check stopping conditions
+            if_train = (evaluator.total_step <= break_step) and (not os.path.exists(f"{cwd}/stop"))
+            
+        print(f"🏁 Multi-episode training completed: {episode_count} episodes")
+        print(f"📊 Average episode reward: {np.mean(episode_rewards):.2f} ± {np.std(episode_rewards):.2f}")
 
         # Save final training plots and logs
         training_logger.save_final_plots()
@@ -624,14 +661,16 @@ def run(save_path, agent_list, log_rules=False, config_dict=None):
         'soft_update_tau': 2e-6,
         'learning_rate': 2e-6,
         'batch_size': 512,
-        'break_step': 16,
+        'break_step': 650000,  # Total training steps (65 episodes * 10K steps)
         'buffer_size_multiplier': 8,  # buffer_size = max_step * this
         'repeat_times': 2,
-        'horizon_len_multiplier': 2,  # horizon_len = max_step * this
-        'eval_per_step_multiplier': 1,  # eval_per_step = max_step * this
+        'horizon_len_multiplier': 1,  # Reduced for multi-episode training
+        'eval_per_step_multiplier': 0.1,  # Less frequent evaluation for multi-episode
         'num_workers': 1,
         'save_gap': 8,
-        'data_length': 4800  # Total data length for max_step calculation
+        'data_length': 10000,  # Per-episode data length (respects train/val split)
+        'num_episodes': 65,  # Optimized for ensemble diversity and convergence analysis
+        'episode_tracking': True  # Enable episode-based tracking
     }
     
     # Override defaults with provided config
@@ -677,14 +716,22 @@ def run(save_path, agent_list, log_rules=False, config_dict=None):
     args.eval_per_step = int(max_step * config['eval_per_step_multiplier'])
     args.num_workers = config['num_workers']
     args.save_gap = config['save_gap']
+    
+    # Multi-episode training parameters
+    args.num_episodes = config.get('num_episodes', 50)
+    args.episode_tracking = config.get('episode_tracking', True)
 
     args.eval_env_class = EvalTradeSimulator
     args.eval_env_args = env_args.copy()
     
-    print(f"🔧 Ensemble Configuration:")
+    print(f"🔧 Multi-Episode Ensemble Configuration:")
     print(f"   GPU ID: {config['gpu_id']}")
     print(f"   Parallel Environments: {config['num_sims']}")
-    print(f"   Max Steps: {max_step}")
+    print(f"   Target Episodes: {config['num_episodes']}")
+    print(f"   Data per Episode: {config['data_length']:,} samples")
+    print(f"   Max Steps per Episode: {max_step:,}")
+    print(f"   Horizon Length: {args.horizon_len:,}")
+    print(f"   Total Training Steps: {config['break_step']:,}")
     print(f"   Batch Size: {config['batch_size']}")
     print(f"   Learning Rate: {config['learning_rate']}")
     print(f"   Network Dims: {config['net_dims']}")
