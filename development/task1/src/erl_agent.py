@@ -325,6 +325,12 @@ class AgentDoubleDQN:
         tau: tau of soft target update: `target_net = target_net * (1-tau) + current_net * tau`
         """
         for tar, cur in zip(target_net.parameters(), current_net.parameters()):
+            # CRITICAL FIX: Ensure both networks are on the same device for soft update
+            if tar.device != cur.device:
+                print(f"❌ SOFT UPDATE DEVICE MISMATCH: target device={tar.device}, current device={cur.device}")
+                # Move target to same device as current
+                tar.data = tar.data.to(cur.device)
+                print(f"✅ Fixed target parameter device to: {tar.device}")
             tar.data.copy_(cur.data * tau + tar.data * (1.0 - tau))
 
     def optimizer_update(self, optimizer: torch.optim, objective: Tensor):
