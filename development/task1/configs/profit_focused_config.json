@@ -1,0 +1,69 @@
+{
+  "experiment_name": "profit_focused_training",
+  "description": "Configuration for profit-focused training with reduced features",
+  
+  "reward_config": {
+    "reward_type": "profit_focused",
+    "profit_amplifier": 3.0,
+    "loss_multiplier": 1.0,
+    "trade_completion_bonus": 0.02,
+    "opportunity_cost_penalty": 0.001,
+    "blend_factor": 0.7,
+    "regime_sensitivity": true
+  },
+  
+  "feature_config": {
+    "use_reduced_features": true,
+    "feature_file": "BTC_1sec_predict_reduced.npy",
+    "n_features": 15,
+    "feature_priority": ["reduced", "enhanced_v3", "optimized", "enhanced", "original"]
+  },
+  
+  "agent_config": {
+    "net_dims": [256, 256, 256],
+    "learning_rate": 5e-5,
+    "batch_size": 128,
+    "horizon_len": 1024,
+    "buffer_size": 1000000,
+    "explore_rate": 0.1,
+    "explore_decay": 0.995,
+    "explore_min": 0.01,
+    "clip_grad_norm": 4.0,
+    "soft_update_tau": 0.005
+  },
+  
+  "training_config": {
+    "num_episodes": 65,
+    "samples_per_episode": 10000,
+    "eval_frequency": 5,
+    "save_frequency": 10,
+    "early_stopping_patience": 15,
+    "target_sharpe_ratio": 1.0,
+    "min_profit_threshold": 0.0
+  },
+  
+  "environment_config": {
+    "max_position": 2,
+    "slippage": 5e-5,
+    "transaction_cost": 0.001,
+    "max_holding_time": 3600,
+    "step_gap": 1,
+    "delay_step": 1
+  },
+  
+  "device_config": {
+    "gpu_id": 0,
+    "num_workers": 2,
+    "num_threads": 8,
+    "random_seed": 42
+  },
+  
+  "logging_config": {
+    "log_level": "INFO",
+    "log_frequency": 100,
+    "save_metrics": true,
+    "track_profits": true,
+    "track_win_rate": true,
+    "track_action_diversity": true
+  }
+}

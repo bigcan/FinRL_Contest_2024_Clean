@@ -881,7 +881,7 @@ def create_reward_calculator(reward_type: str = "multi_objective",
     
     Args:
         reward_type: "simple", "transaction_cost_adjusted", "sharpe_adjusted", 
-                    "multi_objective", "adaptive_multi_objective"
+                    "multi_objective", "adaptive_multi_objective", "profit_focused"
         lookback_window: History window for calculations
         device: PyTorch device
         reward_weights: Custom weights for multi-objective rewards
@@ -889,12 +889,24 @@ def create_reward_calculator(reward_type: str = "multi_objective",
     Returns:
         Configured RewardCalculator instance
     """
-    return RewardCalculator(
+    calculator = RewardCalculator(
         reward_type=reward_type,
         lookback_window=lookback_window,
         device=device,
         reward_weights=reward_weights
     )
+    
+    # Integrate profit-focused rewards if requested
+    if reward_type == "profit_focused":
+        # Import profit-focused module
+        try:
+            from profit_focused_rewards import integrate_profit_rewards
+            calculator = integrate_profit_rewards(calculator)
+            print("Profit-focused rewards integrated successfully")
+        except ImportError:
+            print("Warning: profit_focused_rewards module not found, using standard rewards")
+    
+    return calculator
 
 
 # Example usage and testing
