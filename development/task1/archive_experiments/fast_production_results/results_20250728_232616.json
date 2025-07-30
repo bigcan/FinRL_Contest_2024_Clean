@@ -1,9 +1,0 @@
-{
-  "Fast_Conservative": {
-    "initial_performance": 80.35815073546036,
-    "final_performance": 79.96322747246194,
-    "improvement": -0.39492326299841807,
-    "total_reward": 3974.609500837416,
-    "model_path": "fast_production_results/Fast_Conservative.pth",
-    "learning_rate": 0.0001,
-    "converged": 
