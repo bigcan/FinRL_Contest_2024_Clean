@@ -898,6 +898,8 @@ def create_reward_calculator(reward_type: str = "multi_objective",
     
     # Integrate profit-focused rewards if requested
     if reward_type == "profit_focused":
+        # Change to multi-objective base for profit-focused
+        calculator.reward_type = "multi_objective"
         # Import profit-focused module
         try:
             from profit_focused_rewards import integrate_profit_rewards

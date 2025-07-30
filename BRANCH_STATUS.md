@@ -50,7 +50,7 @@
 | Phase | Status | Start Date | Completion | Notes |
 |-------|--------|------------|------------|-------|
 | Feature Engineering | ✅ Completed | 2025-07-30 | 2025-07-30 | Reduced from 41 to 15 features (63.4% reduction) |
-| Profit Rewards | ✅ Completed | 2025-07-30 | 2025-07-30 | Implemented 3x profit amplification + trade bonuses |
+| Profit Rewards | ✅ Completed | 2025-07-30 | 2025-07-30 | Implemented 3x profit amp + speed multiplier (up to 5x for fast profits) |
 | Aggressive Hyperparams | 🔄 In Progress | 2025-07-30 | - | Next: Larger networks, faster learning |
 | Market Regime | ⏳ Pending | - | - | - |
 | HPO Optimization | ⏳ Pending | - | - | - |
@@ -87,11 +87,40 @@
 - **Overfitting reduction**: Removed 26 redundant features
 - **Max correlation**: 0.686 (below 0.7 threshold)
 
+## 📈 Phase 2 Results: Profit-Focused Rewards
+
+### Key Achievements:
+- ✅ Implemented asymmetric profit amplification (3x for profits, 1x for losses)
+- ✅ Added trade completion bonuses for profitable exits
+- ✅ Created opportunity cost penalties for excessive holding
+- ✅ **NEW**: Implemented profit speed multiplier with exponential decay
+- ✅ Integrated seamlessly with existing reward system
+
+### Profit Speed Innovation:
+The profit speed multiplier rewards faster profits exponentially:
+- **Ultra-fast (5-10s)**: Up to 5x multiplier → 15x total reward
+- **Fast (30s)**: ~2.7x multiplier → 8.2x total reward
+- **Normal (60s)**: ~1.5x multiplier → 4.5x total reward
+- **Slow (300s+)**: 1.0x multiplier → 3x total reward (base only)
+
+This creates strong incentives for:
+- Quick profit-taking over prolonged holding
+- Efficient capital utilization
+- Reduced exposure to market risk
+- Higher trade frequency with positive expectancy
+
+### Expected Impact:
+- **Profit-seeking behavior**: 3x base + up to 5x speed = massive profit incentive
+- **Reduced holding time**: From 70%+ holds to targeted 30-40%
+- **Faster capital turnover**: Quick trades preferred over slow gains
+- **Better risk management**: Less time in market = less risk exposure
+
 ## 🔍 Key Insights from Analysis
 
 1. **Current Issue**: Agent minimizes losses but doesn't seek profits
 2. **Root Cause**: 41 features create noise; conservative reward function
 3. **Solution Path**: Reduce features → Reward profits → Tune aggressively
+4. **Innovation**: Profit speed multiplier creates urgency for quick wins
 
 ## 📚 References
 

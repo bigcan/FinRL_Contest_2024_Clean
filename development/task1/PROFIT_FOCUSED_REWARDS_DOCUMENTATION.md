@@ -11,7 +11,7 @@ The original reward function was too conservative, leading to:
 - Excessive holding behavior (70%+ hold actions)
 - Near-zero returns despite stable training
 
-## Solution: Profit-Focused Rewards
+## Solution: Profit-Focused Rewards with Speed Incentives
 
 ### Key Components
 
@@ -76,6 +76,23 @@ regime_multipliers = {
 - Encourages appropriate strategies per regime
 - Integrates with existing MarketRegimeDetector
 
+#### 7. **Profit Speed Multiplier** (NEW!)
+```python
+# Exponential decay based on holding time
+speed_multiplier = 5.0 * exp(-0.02 * holding_time)
+```
+- **Ultra-fast profits** (5-10s): Up to 5x multiplier
+- **Fast profits** (30s): ~2.7x multiplier
+- **Normal profits** (60s): ~1.5x multiplier
+- **Slow profits** (300s+): 1.0x (no bonus)
+
+**Example Impact:**
+- 1% profit in 10s: 1% × 3 (base) × 4.1 (speed) = **12.3% reward**
+- 1% profit in 60s: 1% × 3 (base) × 1.5 (speed) = **4.5% reward**
+- 1% profit in 300s: 1% × 3 (base) × 1.0 (speed) = **3.0% reward**
+
+This creates a strong incentive for quick profit-taking over prolonged holding.
+
 ## Implementation Details
 
 ### ProfitFocusedRewardCalculator Class
@@ -110,7 +127,11 @@ Parameterized version for HPO:
   "trade_completion_bonus": 0.02,
   "opportunity_cost_penalty": 0.001,
   "momentum_window": 10,
-  "regime_sensitivity": true
+  "regime_sensitivity": true,
+  "profit_speed_enabled": true,
+  "max_speed_multiplier": 5.0,
+  "speed_decay_rate": 0.02,
+  "min_holding_time": 5
 }
 ```
 
@@ -153,10 +174,11 @@ Edit `configs/profit_focused_config.json` to customize parameters.
 
 ## Expected Improvements
 
-1. **Higher Returns**: 3x profit amplification should drive positive returns
-2. **More Active Trading**: Reduced holding from 70% to ~40-50%
-3. **Better Win Rate**: Focus on profitable trades
-4. **Faster Learning**: Stronger profit signals accelerate learning
+1. **Higher Returns**: 3x profit amplification + speed bonuses drive aggressive profit-taking
+2. **More Active Trading**: Reduced holding from 70% to ~30-40%
+3. **Faster Trade Turnover**: Quick profits preferred over slow gains
+4. **Better Capital Efficiency**: More trades per episode with faster cycling
+5. **Improved Sharpe Ratio**: Many small, quick wins vs few large, risky trades
 
 ## Next Steps
 

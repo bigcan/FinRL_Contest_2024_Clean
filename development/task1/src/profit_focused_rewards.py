@@ -28,6 +28,10 @@ class ProfitFocusedRewardCalculator:
                  opportunity_cost_penalty: float = 0.001,
                  momentum_window: int = 10,
                  regime_sensitivity: bool = True,
+                 profit_speed_enabled: bool = True,
+                 max_speed_multiplier: float = 5.0,
+                 speed_decay_rate: float = 0.02,
+                 min_holding_time: int = 5,
                  device: str = "cpu"):
         """
         Initialize profit-focused reward calculator
@@ -39,6 +43,10 @@ class ProfitFocusedRewardCalculator:
             opportunity_cost_penalty: Penalty per step for holding positions
             momentum_window: Window for momentum calculation
             regime_sensitivity: Whether to adjust rewards based on market regime
+            profit_speed_enabled: Enable profit speed multiplier
+            max_speed_multiplier: Maximum multiplier for ultra-fast profits
+            speed_decay_rate: Exponential decay rate for speed multiplier
+            min_holding_time: Minimum holding time to avoid noise trades
             device: PyTorch device
         """
         self.profit_amplifier = profit_amplifier
@@ -47,6 +55,10 @@ class ProfitFocusedRewardCalculator:
         self.opportunity_cost_penalty = opportunity_cost_penalty
         self.momentum_window = momentum_window
         self.regime_sensitivity = regime_sensitivity
+        self.profit_speed_enabled = profit_speed_enabled
+        self.max_speed_multiplier = max_speed_multiplier
+        self.speed_decay_rate = speed_decay_rate
+        self.min_holding_time = min_holding_time
         self.device = device
         
         # State tracking
@@ -117,7 +129,24 @@ class ProfitFocusedRewardCalculator:
             trade_return = self._calculate_trade_return(current_price)
             
             if trade_return > 0:
-                # Bonus for profitable trade completion
+                # NEW: Apply profit speed multiplier
+                speed_multiplier = self.calculate_profit_speed_multiplier(self.position_holding_time)
+                
+                # Amplify the base reward with speed multiplier
+                # This stacks with the profit amplifier for compound effect
+                # Example: 1% profit in 10s = 1% × 3 (profit amp) × 4.1 (speed) = 12.3% reward
+                if speed_multiplier > 1.0:
+                    # Apply speed bonus to the entire profit component
+                    profit_component = base_reward * (speed_multiplier - 1.0)
+                    reward += profit_component
+                    
+                    # Log exceptional speed trades
+                    if speed_multiplier > 3.0:
+                        self.logger.debug(f"Fast profit! Return: {trade_return:.4f}, "
+                                        f"Time: {self.position_holding_time}s, "
+                                        f"Speed multiplier: {speed_multiplier:.2f}x")
+                
+                # Standard completion bonus
                 completion_bonus = self.trade_completion_bonus * (1 + trade_return)
                 reward += completion_bonus
                 
@@ -126,6 +155,7 @@ class ProfitFocusedRewardCalculator:
                 self.largest_win = max(self.largest_win, trade_return)
             else:
                 # Small penalty for losing trade (encourage cutting losses)
+                # No speed bonus for losses
                 reward += trade_return * 0.5
                 
                 # Track losing trade
@@ -187,6 +217,31 @@ class ProfitFocusedRewardCalculator:
                 reward += performance_bonus
         
         return reward
+    
+    def calculate_profit_speed_multiplier(self, holding_time: int) -> float:
+        """
+        Calculate speed multiplier for profits based on holding time
+        Faster profits get higher multipliers
+        
+        Args:
+            holding_time: Time in steps (seconds) position was held
+            
+        Returns:
+            Speed multiplier (1.0 to max_speed_multiplier)
+        """
+        if not self.profit_speed_enabled:
+            return 1.0
+            
+        # Ignore very short holds (likely noise)
+        if holding_time < self.min_holding_time:
+            return 1.0
+            
+        # Exponential decay function
+        # Fast profits (10s) → high multiplier, slow profits (300s+) → low multiplier
+        multiplier = self.max_speed_multiplier * np.exp(-self.speed_decay_rate * holding_time)
+        
+        # Ensure minimum multiplier of 1.0
+        return max(multiplier, 1.0)
     
     def _is_momentum_positive(self) -> bool:
         """Check if recent returns show positive momentum"""
@@ -340,41 +395,53 @@ def integrate_profit_rewards(existing_reward_calc):
     # Override the calculate_reward method
     original_calculate = existing_reward_calc.calculate_reward
     
-    def enhanced_calculate_reward(current_asset, initial_asset, action, 
-                                current_price=None, previous_price=None, 
-                                position=None, previous_position=None, 
-                                current_volatility=None):
+    def enhanced_calculate_reward(old_asset, new_asset, action_int, mid_price, slippage):
         """Enhanced reward calculation with profit focus"""
         
-        # Handle the case where price info might not be directly available
-        if current_price is None or previous_price is None:
-            # Estimate from asset values if needed
-            if current_asset > 0 and initial_asset > 0:
-                price_ratio = current_asset / initial_asset
-                previous_price = 100.0  # Normalized
-                current_price = 100.0 * price_ratio
-            else:
-                # Fallback to original calculation
-                return original_calculate(
-                    current_asset, initial_asset, action, 
-                    current_price, previous_price, position, 
-                    previous_position, current_volatility
-                )
+        # Get original reward first
+        original_reward = original_calculate(old_asset, new_asset, action_int, mid_price, slippage)
         
-        # Get original reward for comparison
-        original_reward = original_calculate(
-            current_asset, initial_asset, action, 
-            current_price, previous_price, position, 
-            previous_position, current_volatility
-        )
+        # Extract values for profit-focused calculation
+        if isinstance(old_asset, th.Tensor):
+            old_asset_val = old_asset.item()
+            new_asset_val = new_asset.item()
+            action = action_int.item() if isinstance(action_int, th.Tensor) else action_int
+            current_price = mid_price.item() if isinstance(mid_price, th.Tensor) else mid_price
+        else:
+            old_asset_val = float(old_asset)
+            new_asset_val = float(new_asset)
+            action = int(action_int)
+            current_price = float(mid_price)
+        
+        # Estimate previous price from asset change
+        asset_ratio = new_asset_val / old_asset_val if old_asset_val > 0 else 1.0
+        price_change_estimate = (asset_ratio - 1.0) / 3.0  # Rough estimate assuming position size
+        previous_price = current_price / (1 + price_change_estimate)
+        
+        # Track position state (simplified - in real implementation this would be tracked properly)
+        # For now, we'll use action to infer position changes
+        if not hasattr(existing_reward_calc, '_position_state'):
+            existing_reward_calc._position_state = 0
+            
+        previous_position = existing_reward_calc._position_state
+        
+        # Update position based on action
+        if action == 0:  # sell
+            position = 0
+        elif action == 2:  # buy
+            position = 1
+        else:  # hold
+            position = previous_position
+            
+        existing_reward_calc._position_state = position
         
         # Calculate profit-focused reward
         profit_reward = existing_reward_calc.profit_calculator.calculate_reward(
             action=action,
             current_price=current_price,
             previous_price=previous_price,
-            position=position if position is not None else 0,
-            previous_position=previous_position if previous_position is not None else 0,
+            position=position,
+            previous_position=previous_position,
             market_regime=None  # Can be enhanced with regime detection
         )
         
