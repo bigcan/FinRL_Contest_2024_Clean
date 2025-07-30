@@ -1,0 +1,127 @@
+{
+  "experiment_name": "hpo_optimized_production",
+  "description": "Production configuration optimized by HPO for maximum profitability",
+  "hpo_metadata": {
+    "optimization_date": "2025-07-30 22:30:35",
+    "target_metric": "sharpe_ratio",
+    "best_sharpe": 0.873,
+    "trials_run": 10,
+    "gpu_used": "NVIDIA GeForce RTX 4060 Laptop GPU"
+  },
+  "reward_config": {
+    "reward_type": "profit_focused",
+    "profit_amplifier": 6.04,
+    "loss_multiplier": 0.8,
+    "trade_completion_bonus": 0.03,
+    "opportunity_cost_penalty": 0.002,
+    "blend_factor": 0.85,
+    "regime_sensitivity": true,
+    "profit_speed_enabled": true,
+    "max_speed_multiplier": 6.86,
+    "speed_decay_rate": 0.015,
+    "min_holding_time": 3
+  },
+  "feature_config": {
+    "use_reduced_features": true,
+    "feature_file": "BTC_1sec_predict_reduced.npy",
+    "n_features": 15,
+    "feature_priority": [
+      "reduced",
+      "enhanced_v3",
+      "optimized",
+      "enhanced",
+      "original"
+    ]
+  },
+  "agent_config": {
+    "net_dims": [
+      512,
+      512,
+      256
+    ],
+    "learning_rate": 6.79e-05,
+    "batch_size": 256,
+    "horizon_len": 2048,
+    "buffer_size": 2000000,
+    "explore_rate": 0.15,
+    "explore_decay": 0.99,
+    "explore_min": 0.005,
+    "clip_grad_norm": 5.0,
+    "soft_update_tau": 0.01,
+    "gamma": 0.995,
+    "lambda_gae": 0.97,
+    "entropy_coef": 0.02,
+    "use_grad_clip": true,
+    "max_grad_norm": 10.0,
+    "actor_lr": 6.79e-05,
+    "critic_lr": 0.0001358,
+    "optimizer": "AdamW",
+    "weight_decay": 1e-05,
+    "lr_scheduler": "cosine",
+    "lr_warmup_steps": 1000,
+    "gradient_accumulation_steps": 2
+  },
+  "training_config": {
+    "num_episodes": 100,
+    "samples_per_episode": 15000,
+    "eval_frequency": 3,
+    "save_frequency": 5,
+    "early_stopping_patience": 20,
+    "target_sharpe_ratio": 2.0,
+    "min_profit_threshold": 0.001,
+    "max_steps_per_episode": 20000,
+    "update_frequency": 512,
+    "target_update_frequency": 2048,
+    "eval_episodes": 5,
+    "checkpoint_best_only": true,
+    "use_gradient_checkpointing": false,
+    "mixed_precision": false
+  },
+  "environment_config": {
+    "max_position": 3,
+    "slippage": 3e-05,
+    "transaction_cost": 0.0008,
+    "max_holding_time": 1800,
+    "step_gap": 1,
+    "delay_step": 1,
+    "position_scaling": "dynamic",
+    "risk_limit": 0.02,
+    "stop_loss": 0.03,
+    "take_profit": 0.05
+  },
+  "exploration_config": {
+    "exploration_strategy": "epsilon_greedy_decay",
+    "noise_type": "normal",
+    "noise_std_start": 0.2,
+    "noise_std_end": 0.05,
+    "noise_decay_steps": 50000,
+    "action_smoothing": 0.1
+  },
+  "regime_config": {
+    "use_regime_detection": true,
+    "short_lookback": 20,
+    "medium_lookback": 50,
+    "long_lookback": 100
+  },
+  "device_config": {
+    "gpu_id": 0,
+    "num_workers": 4,
+    "num_threads": 16,
+    "random_seed": 42,
+    "deterministic": false,
+    "pin_memory": true,
+    "prefetch_factor": 4
+  },
+  "logging_config": {
+    "log_level": "INFO",
+    "log_frequency": 50,
+    "save_metrics": true,
+    "track_profits": true,
+    "track_win_rate": true,
+    "track_action_diversity": true,
+    "track_position_duration": true,
+    "track_speed_multipliers": true,
+    "tensorboard": true,
+    "wandb": false
+  }
+}

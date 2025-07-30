@@ -254,24 +254,27 @@ class HPOObjective:
         
         # Create args object
         class Args:
-            def __init__(self):
-                self.net_dims = agent_params['net_dims']
-                self.learning_rate = agent_params['learning_rate']
-                self.batch_size = agent_params['batch_size']
-                self.horizon_len = agent_params['horizon_len']
-                self.gamma = agent_params['gamma']
-                self.lambda_gae = agent_params['lambda_gae']
-                self.entropy_coef = agent_params['entropy_coef']
-                self.clip_grad_norm = agent_params['clip_grad_norm']
-                self.soft_update_tau = agent_params['soft_update_tau']
-                self.device = th.device(self.device)
-                self.state_dim = env.state_dim
-                self.action_dim = env.action_dim
-                self.if_discrete = env.if_discrete
-                self.max_step = 10000
-                self.if_off_policy = False
-                
+            pass
+        
         args = Args()
+        args.net_dims = agent_params['net_dims']
+        args.learning_rate = agent_params['learning_rate']
+        args.batch_size = agent_params['batch_size']
+        args.horizon_len = agent_params['horizon_len']
+        args.gamma = agent_params['gamma']
+        args.lambda_gae = agent_params['lambda_gae']
+        args.entropy_coef = agent_params['entropy_coef']
+        args.clip_grad_norm = agent_params['clip_grad_norm']
+        args.soft_update_tau = agent_params['soft_update_tau']
+        args.device = th.device("cuda" if th.cuda.is_available() else "cpu")
+        args.state_dim = env.state_dim
+        args.action_dim = env.action_dim
+        args.if_discrete = env.if_discrete
+        args.max_step = 10000
+        args.if_off_policy = False
+        args.if_use_per = False
+        args.buffer_size = 1000000
+        
         agent = AgentPPO(args.net_dims, args.state_dim, args.action_dim, args)
         
         # Set exploration parameters
