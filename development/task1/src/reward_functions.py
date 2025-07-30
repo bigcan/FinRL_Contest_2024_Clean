@@ -392,6 +392,8 @@ class RewardCalculator:
             return self._adaptive_multi_objective_reward(old_asset, new_asset, action_int, mid_price, slippage)
         elif self.reward_type == "profit_maximizing":
             return self._profit_maximizing_reward(old_asset, new_asset, action_int, mid_price, slippage)
+        elif self.reward_type == "profit_focused":
+            return self._profit_focused_reward(old_asset, new_asset, action_int, mid_price, slippage)
         else:
             raise ValueError(f"Unknown reward type: {self.reward_type}")
     
